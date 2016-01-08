@@ -43,24 +43,56 @@ String s;
              "</style>"
              "<body>"
              "<img class=\"hatter\" src=\"http://locsol.pe.hu/locsol/");
-             r=random(1,18);
-             if(r==1) s+=F("1.jpg\">");
-             if(r==2) s+=F("2.jpg\"><style>body{color:white}</style>");
-             if(r==3) s+=F("2m.jpg\">");
-             if(r==4) s+=F("3.jpg\"><style>body{color:white}</style>");
-             if(r==5) s+=F("4.jpg\">");
-             if(r==6) s+=F("5.jpg\">");
-             if(r==7) s+=F("6.jpg\"><style>body{color:white)</style>");
-             if(r==8) s+=F("7.jpg\">");
-             if(r==9) s+=F("9.jpg\"><style>body{color:white}</style>");
-             if(r==10) s+=F("10.jpg\"><style>body{color:white}</style>");
-             if(r==11) s+=F("11.jpg\">");
-             if(r==12) s+=F("12.jpg\"><style>body{color:white}</style>");
-             if(r==13) s+=F("13.jpg\">");
-             if(r==14) s+=F("14.jpg\">");
-             if(r==15) s+=F("15.jpg\"><style>body{color:white}</style>");
-             if(r==16) s+=F("16.jpg\"><style>body{color:white}</style>");
-             if(r==17) s+=F("17.jpg\"><style>body{color:white}</style>");
+             if(month()==12 || month()==1 || month()==2){
+                if(month()==12 || (month()==1 && day()<10)) r=random(18,44);
+                else r=random(34,44);             
+             }
+             else r=random(1,18);
+             switch(r){
+              case 1:   s+=F("1.jpg\">");                                   break;
+              case 2:   s+=F("2.jpg\"><style>body{color:white}</style>");   break;
+              case 3:   s+=F("2m.jpg\">");                                  break;
+              case 4:   s+=F("3.jpg\"><style>body{color:white}</style>");   break;
+              case 5:   s+=F("4.jpg\">");                                   break;
+              case 6:   s+=F("5.jpg\">");                                   break;
+              case 7:   s+=F("6.jpg\"><style>body{color:white)</style>");   break;
+              case 8:   s+=F("7.jpg\">");                                   break;
+              case 9:   s+=F("9.jpg\"><style>body{color:white}</style>");   break;
+              case 10:  s+=F("10.jpg\"><style>body{color:white}</style>");  break;
+              case 11:  s+=F("11.jpg\">");                                  break;
+              case 12:  s+=F("12.jpg\"><style>body{color:white}</style>");  break;
+              case 13:  s+=F("13.jpg\">");                                  break;
+              case 14:  s+=F("14.jpg\">");                                  break;
+              case 15:  s+=F("15.jpg\"><style>body{color:white}</style>");  break;
+              case 16:  s+=F("16.jpg\"><style>body{color:white}</style>");  break;
+              case 17:  s+=F("17.jpg\"><style>body{color:white}</style>");  break;
+              case 18:  s+=F("18.jpg\"><style>body{color:white}</style>");  break;
+              case 19:  s+=F("19.jpg\"><style>body{color:white}</style>");  break;
+              case 20:  s+=F("20.jpg\"><style>body{color:white}</style>");  break;
+              case 21:  s+=F("21.jpg\"><style>body{color:white}</style>");  break;
+              case 22:  s+=F("22.jpg\"><style>body{color:white}</style>");  break;
+              case 23:  s+=F("23.jpg\"><style>body{color:white}</style>");  break;
+              case 24:  s+=F("24.png\">");                                  break;
+              case 25:  s+=F("25.jpg\"><style>body{color:white}</style>");  break;
+              case 26:  s+=F("26.jpg\"><style>body{color:white}</style>");  break;
+              case 27:  s+=F("27.jpg\">");                                  break;
+              case 28:  s+=F("28.jpg\"><style>body{color:white}</style>");  break;
+              case 29:  s+=F("29.jpg\">");                                  break;
+              case 30:  s+=F("30.jpg\"><style>body{color:white}</style>");  break;
+              case 31:  s+=F("31.jpg\"><style>body{color:white}</style>");  break;
+              case 32:  s+=F("32.jpg\">");                                  break;
+              case 33:  s+=F("33.jpg\"><style>body{color:white}</style>");  break;
+              case 34:  s+=F("34.jpg\"><style>body{color:white}</style>");  break;
+              case 35:  s+=F("35.jpg\"><style>body{color:white}</style>");  break;
+              case 36:  s+=F("36.jpg\">");                                  break;
+              case 37:  s+=F("37.jpg\"><style>body{color:white}</style>");  break;
+              case 38:  s+=F("38.jpg\">");                                  break;
+              case 39:  s+=F("39.jpg\">");                                  break;
+              case 40:  s+=F("40.jpg\">");                                  break;
+              case 41:  s+=F("41.jpg\">");                                  break;
+              case 42:  s+=F("42.jpg\">");                                  break;
+              case 43:  s+=F("43.jpg\"><style>body{color:white}</style>");  break;
+                }
              s+=F("<div id=\"szoveg\"><h1 style=\"margin-left:30%");
              if(r==4 || r==10 || r==17) s+=F(";color:black");
              s+=F("\">Locsolórendszer</h1>"
@@ -76,8 +108,8 @@ String s;
   server_start.second < 10 ? s += ":0" : s += ":"; s += server_start.second;
   s += F("<br><br> <b><font size=\"3\">Hőmérséklet: ");
   s += String(sensor.temperature_avg,1);
-  s += F(" °C&nbsp;&nbsp;&nbsp;&nbsp;Hőérzet: ");
-  s += String(sensor.heat_index,1);
+  //s += F(" °C&nbsp;&nbsp;&nbsp;&nbsp;Hőérzet: ");
+  //s += String(sensor.heat_index,1);
   s += F(" °C</font></b>");
   s += F("<br><font size=\"2\">&nbsp;min: ");
   s += String(sensor.Min,1);
@@ -89,7 +121,7 @@ String s;
   s += F("<b><font size=\"3\">Páratartalom: ");
   s += String(sensor.humidity_avg,1);
    s += F("%</font></b><br><br><br>"
-       //"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Állapot"
+       //"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ä‚ďż˝llapot"
        //""
        "<span id=\"allapot\">ismeretlen</span><br><br>\n");
 
@@ -104,14 +136,17 @@ String s;
 "\n   •25 °C és 30 °C között  4 pont"
 "\n   •30 °C és 35 °C között  5 pont"
 "\n   •35 °C felett 6 pont'>");                    //Ezt csak megjeleno buborekjegyzet a weboldalon, kikapcsolhato*/
-s+=F("<br><br><br><br><b>Auto öntözés:</b><br>"
-"Következő öntözés időpontja: ");
-if(sensor.water_points>=7) {s+=AUTO_WATERING_HOUR; s+=F(":"); s+=AUTO_WATERING_MINUTE;  s+=AUTO_WATERING_MINUTE;}
-else  s+=F("--");
-s+=F("<br>11<sup>00</sup>13<sup>00</sup>15<sup>00</sup> órási átlag: ");
+s+=F("<br><br><br><br><b>Auto öntözés:</b><br>");
+for(int i=0;i<LOCSOLO_NUMBER;i++){
+  s+=F("Locsolo "); s+=i; s+=(" következő öntözés időpontja: ");
+  if(sensor.water_points>=7 && locsol[i].autom==1) {s+=locsol[i].auto_watering_time.hour; locsol[i].auto_watering_time.minute < 10 ? s += F(":0") : s +=F( ":"); s+=locsol[i].auto_watering_time.minute;}
+  else  s+=F("--");
+  s+=F("<br>");
+}
+s+=F("11<sup>00</sup>13<sup>00</sup>15<sup>00</sup> órási átlag: ");
 s+=sensor.avg_3h;
 s+=F(" °C<br>");
-s+=F("Öntözési pontok száma: ");
+s+=F("öntözési pontok száma: ");
 s+=sensor.water_points;
 s+=F("<br>");
 if(hour()<15) s+=F("Tegnapi ");
@@ -470,7 +505,7 @@ void html_settings(WiFiClient *client)
     s=F("<br><br><br><br>");
     /*  for(int i;i<LOCSOLO_NUMBER;i++){
         s+="<b>"; s+=locsolo[i].Name; s+="</b><br>";
-        s+="Öntözési időpont: "; s+=locsolo[i].auto_watering_time.hour; locsolo[i].auto_watering_time.minute < 10 ? s += ":0" : s += ":"; s+=locsolo[i].auto_watering_time.minute;
+        s+="öntözési időpont: "; s+=locsolo[i].auto_watering_time.hour; locsolo[i].auto_watering_time.minute < 10 ? s += ":0" : s += ":"; s+=locsolo[i].auto_watering_time.minute;
         s+="<br>Időtartam: "; s+=locsolo[i].duration/60; s+=" perc<br><br>";
       }*/
   s+=F("</body>"
@@ -525,4 +560,14 @@ void send_data_voltage(uint16_t *data,uint16_t *count,uint16_t *sensor_count,WiF
          }
 }
 
+void dht_status()
+{
+  String s;
+  for(int i=0;i<DHT_SENSOR_MEMORY;i++){
+    s+=dht_temp[i];
+    s+="    ";
+    if(i%DHT_AVARAGE == 0)  s+=dht_temp_avg[i/10];
+    s+="<br>";
+  }
+}
 
