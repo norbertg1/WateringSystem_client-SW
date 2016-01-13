@@ -43,8 +43,9 @@ String s;
              "</style>"
              "<body>"
              "<img class=\"hatter\" src=\"http://locsol.pe.hu/locsol/");
+             randomSeed(ESP.getCycleCount());
              if(month()==12 || month()==1 || month()==2){
-                if(month()==12 || (month()==1 && day()<10)) r=random(18,44);
+                if(month()==12 || (month()==1 && day()<=10)) r=random(18,44);
                 else r=random(34,44);             
              }
              else r=random(1,18);
@@ -560,14 +561,16 @@ void send_data_voltage(uint16_t *data,uint16_t *count,uint16_t *sensor_count,WiF
          }
 }
 
-void dht_status()
+void dht_status(WiFiClient *client)
 {
   String s;
+  s="DHT\n";
   for(int i=0;i<DHT_SENSOR_MEMORY;i++){
     s+=dht_temp[i];
-    s+="    ";
-    if(i%DHT_AVARAGE == 0)  s+=dht_temp_avg[i/10];
-    s+="<br>";
+    s+="\n";
+    if(i%DHT_AVARAGE == 0)  {s+=dht_temp_avg[i/10]; s+="\n\n\n";}
+    //s+="<br>";
   }
+  client->println(s);
 }
 

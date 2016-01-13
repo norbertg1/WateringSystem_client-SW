@@ -159,7 +159,8 @@ uint32_t  temp_expire;
 uint8_t   wifinc_count=0;
 float     dht_temp[DHT_SENSOR_MEMORY];                    //about at 0 Celsius the readout of DHT22 sensor is fluctuating
 float     dht_temp_avg[DHT_SENSOR_MEMORY/DHT_AVARAGE];    //the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-
+uint8_t   dht_temp_count=0;    //about at 0 Celsius the readout of DHT22 sensor is fluctuating
+                                      //the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
 os_timer_t timer;
 bool timer_flag;
 DHT dht(DHT_PIN,DHT_TYPE);
@@ -466,7 +467,7 @@ void loop() {
      Serial.println(F("p:7"));
      status_respond(&client,&locsolo[0],LOCSOLO_NUMBER);
     }
-    else if (request.indexOf("/dht_status") != -1) dht_status();
+    else if (request.indexOf("/dht_status") != -1) dht_status(&client);
     else if (request.indexOf("/reset") != -1) reset_cmd();
      
 #if  ENABLE_IP  
@@ -526,8 +527,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
 {
   float m,n;
   uint8_t i=0;
-  static uint8_t dht_temp_count=0;    //about at 0 Celsius the readout of DHT22 sensor is fluctuating
-                                      //the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
+  
   Serial.print(F("Time: ")); Serial.print(hour()); Serial.print(F(":")); Serial.print(minute()); Serial.print(F(":")); Serial.println(second());
   do{
       m=dht.readHumidity();
@@ -545,9 +545,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(!(isnan(m) || isnan(n)))
   {
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-    dht_temp[dht_temp_count]=n;
-    dht_temp_count++;
-    if (dht_temp_count>=DHT_SENSOR_MEMORY) dht_temp_count=0;
+ //   dht_temp[dht_temp_count]=n;
+ //   dht_temp_count++;
+ //   if (dht_temp_count>=DHT_SENSOR_MEMORY) dht_temp_count=0;
     //-----------------------------------------------------------------------------------------------------------------------------------//
     sensor.count_dht++;
     sensor.humidity_measured += m;
@@ -567,9 +567,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     else sensor.epoch_saved_dt[sensor.count]=now()-sensor.time_previous;
     sensor.time_previous=now();
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem                
-    if(1/*dht_temp_count%DHT_AVARAGE == 0*/){
-      dht_temp_avg[dht_temp_count/DHT_AVARAGE]=sensor.temperature_avg;
-    }
+ //   if(dht_temp_count%DHT_AVARAGE == 0){
+ //     dht_temp_avg[dht_temp_count/DHT_AVARAGE]=sensor.temperature_avg;
+ //   }
     //-----------------------------------------------------------------------------------------------------------------------------------//
     if(sensor.count<(SENSOR_MEMORY-1)) sensor.count++;
         else { for(int i=0;i<(SENSOR_MEMORY-1);i++) {
