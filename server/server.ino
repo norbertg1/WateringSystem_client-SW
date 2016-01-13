@@ -572,12 +572,13 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
  //   }
     //-----------------------------------------------------------------------------------------------------------------------------------//
     if(sensor.count<(SENSOR_MEMORY-1)) sensor.count++;
-        else { for(int i=0;i<(SENSOR_MEMORY-1);i++) {
-                  sensor.epoch_saved+=sensor.epoch_saved_dt[0];
-                  sensor.temperature_saved[i]=sensor.temperature_saved[i+1]; 
-                  sensor.epoch_saved_dt[i]=sensor.epoch_saved_dt[i+1];                  
-                  }
-                 }
+        else {
+          sensor.epoch_saved+=sensor.epoch_saved_dt[0];
+          for(int i=0;i<(SENSOR_MEMORY-1);i++) {
+            sensor.temperature_saved[i]=sensor.temperature_saved[i+1]; 
+            sensor.epoch_saved_dt[i]=sensor.epoch_saved_dt[i+1];                  
+          }
+        }
     sensor.temperature_measured=0;
     sensor.humidity_measured=0;    
     sensor.count_dht=0;
@@ -631,7 +632,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(sensor.temperature_avg != 0)  if(sensor.temperature_avg<sensor.Min) sensor.Min=sensor.temperature_avg; 
   if(day()!=sensor.thisday)  {Serial.print(F("DEBUG, sensor.avg_now:")); Serial.print(sensor.avg_now); Serial.print(F("   sensor.avg_count:")); Serial.println(sensor.avg_count);
                                   sensor.Max=sensor.temperature_avg;  sensor.Min=sensor.temperature_avg;
-                                  sensor.avg_previous=sensor.avg_now/sensor.avg_count; sensor.avg_count=0;
+                                  sensor.avg_previous=sensor.avg_now/sensor.avg_count; sensor.avg_count=0;  sensor.avg_now=0;
                                   for(int i=0;i<LOCSOLO_NUMBER;i++) {                                                                          //megallapitasa
                                       locsol[i].temp_min=999;   //atlaggal helzetesiteni majd
                                       locsol[i].temp_max=-273;  //atlaggal helyetesiteni majd
