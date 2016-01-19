@@ -540,7 +540,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(!(isnan(m) || isnan(n)))
   {
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-    if (dht_temp_count>=DHT_SENSOR_MEMORY || sensor.count_dht>= DHT_AVARAGE) dht_temp_count=0;
+    if (dht_temp_count>=DHT_SENSOR_MEMORY && sensor.count_dht>= DHT_AVARAGE) dht_temp_count=0;
     dht_temp[dht_temp_count]=n;
     dht_temp_count++;
     //-----------------------------------------------------------------------------------------------------------------------------------//
