@@ -100,10 +100,10 @@ struct __attribute__((aligned(4))) Locsolo
   short     state=LOW;              //Állapot amiben jelenleg van
   short     autom=LOW;              //Automata öntözés be-ki kapcsolása
   short     timeout=LOW;            //Ha nincs kapcsolat a kliensel
-  uint16_t  voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszÄ‚Ä˝ltsége
+  uint16_t  voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszültsége
   int16_t   temp[LOCSOL_MEMORY];    //A locsolo alltal mert feszultseg
   uint8_t   humidity;                //A locsoló álltal mért páratartalom
-  uint16_t  count=0;                //hányszor mértem meg a feszÄ‚Ä˝ltséget
+  uint16_t  count=0;                //hányszor mértem meg a feszültséget
   time_t    login_epoch=0;          //A kliensel létesített legutóbbi kapcsolat időpontja
   time_t    watering_epoch=0;       //Az automata öntözés időpontja epoch-ban
   time_t    duration=600;           //Eddig tart az ontozes
@@ -540,7 +540,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(!(isnan(m) || isnan(n)))
   {
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-    if (dht_temp_count>=DHT_SENSOR_MEMORY) dht_temp_count=0;
+    if (dht_temp_count>=DHT_SENSOR_MEMORY || sensor.count_dht>= DHT_AVARAGE) dht_temp_count=0;
     dht_temp[dht_temp_count]=n;
     dht_temp_count++;
     //-----------------------------------------------------------------------------------------------------------------------------------//
@@ -578,7 +578,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     sensor.humidity_measured=0;    
     sensor.count_dht=0;
     sensor.avg_count++;      //Napi átlaghőmérséklethez kell
-    for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a klien feszÄ‚Ä˝ltség és hőmérséklet értékei az előző értéket veszik fel
+    for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a klien feszültség és hőmérséklet értékei az előző értéket veszik fel
       if(locsol[i].voltage[locsol[i].count]==0 && locsol[i].count>0) {
         locsol[i].voltage[locsol[i].count]=locsol[i].voltage[locsol[i].count-1];
         locsol[i].temp[locsol[i].count]=locsol[i].temp[locsol[i].count-1];      
@@ -636,7 +636,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
                                   sensor.thisday=day();
                                   //Serial.print(F("   sensor.avg_previous:")); Serial.println(sensor.avg_previous); 2016.1.18 Delete if OK!
   }
-  if(hour()==11 && minute()<5             ) {sensor.avg_nr=1; sensor.avg_3h_temp=sensor.temperature_avg;}              //kiszámolom a 11 óra,13 óra és 15 óra körÄ‚Ä˝l mért hőmérséklet átlagát.
+  if(hour()==11 && minute()<5             ) {sensor.avg_nr=1; sensor.avg_3h_temp=sensor.temperature_avg;}              //kiszámolom a 11 óra,13 óra és 15 óra körül mért hőmérséklet átlagát.
   if(hour()==13 && minute()<5 && sensor.avg_nr==1) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;}
   if(hour()==15 && minute()<5 && sensor.avg_nr==2) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;  sensor.avg_3h=sensor.avg_3h_temp/3; sensor.avg_nr=0; water_points(&locsolo[0]);} //megállapítom kell-e öntözni
   //Serial.print(F("Debug, avg_nr=")); Serial.print(sensor.avg_nr); Serial.print(F("  temp_avg="));  Serial.println(sensor.avg_3h); 2016.1.18 Delete if OK!
