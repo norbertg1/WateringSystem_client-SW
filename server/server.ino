@@ -3,6 +3,11 @@
  *
  *
  *
+ *
+ *
+ *
+ *
+ *
  *Created by Norbi
  *  2015.8 - 2016.1
  * 
@@ -38,13 +43,13 @@
 #define SENSOR_MEMORY 800
 #define ENABLE_IP 0                 //Bekapcsolja a legutóbbi 10 csatlakozott eszköz IP címének megjegyzését és kijelzését
 #define IP_TIMEOUT  3600            //ha ugyanarrola az IPről jelentkezek be ennyi másodpercnek kell eltelnie hogy megjegyezze
+#define DHT_SENSOR_MEMORY 100     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
 #define SERIAL_DEBUG 1
 #define FILTER  0.9
-#define version_two 0
-#define version_one 1
+#define VERSION_TWO 0
+#define VERSION_ONE 1
 #define ENABLE_FLASH 1
-#define DHT_SENSOR_MEMORY 100     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-
+#define TELNET_DEBUG 1
 //-------Flash memory map
 #define mem_sector0             0x7b000//0x3c000      //40200000
 #define mem_sector1             0x7c000//0x3d000
@@ -101,12 +106,13 @@ struct __attribute__((aligned(4))) Locsolo
   uint16_t  count=0;                //hányszor mértem meg a feszÄ‚Ä˝ltséget
   time_t    login_epoch=0;          //A kliensel létesített legutóbbi kapcsolat időpontja
   time_t    watering_epoch=0;       //Az automata öntözés időpontja epoch-ban
-  time_t    duration=100;           //Eddig tart az ontozes
+  time_t    duration=600;           //Eddig tart az ontozes
   Time      auto_watering_time;     //Az automata öntözés időpontja óra, perc, másodperc
   uint8_t   temperature_graph;       //Toggle on/off temperature graph
   uint8_t   voltage_graph;          //Toggle on/off humidity graph
   int16_t   temp_max=-273;           //napi minimum hőmerseklet
   int16_t   temp_min=999;          //napi maximum hőmérséklet
+  uint8_t   auto_flag=0;          //for automated watering
 };
 
 struct Locsolo locsolo[LOCSOLO_NUMBER];
@@ -181,56 +187,21 @@ extern "C" {
 
 uint16_t dT;
 
-#ifdef version_one
+/*-----------------------------------------OTA---------------------------------------------------------------------------------------------*/
+#ifdef VERSION_ONE
   const uint16_t aport = 8266;
   const char* host = "esp8266-ota";
   WiFiServer TelnetServer(aport);
   WiFiClient Telnet;
   WiFiUDP OTA;
 #endif
-/*
-#define client_login()  {                                             \
-  for(int i=0;i<LOCSOLO_NUMBER;i++){                                  \
-    if (request.equals(locsolo[i].Name))  {                           \
-      printstatus1(locsolo,i);                                        \
-      Serial.println("1");                                            \
-      Serial.println(locsolo[i].Name);                                \
-      client.print(locsolo[i].Name);                                  \ 
-      Serial.println("2");                                            \
-      client.println("=");                                            \
-      Serial.println("3");                                            \
-      client.println(locsolo[i].set);                                 \
-      Serial.println("4");                                            \
-      Serial.println("5");                                            \
-      ESP.wdtFeed();                                                  \
-      Serial.println("6");                                            \
-      request = client.readStringUntil('\r');                         \
-      Serial.println("7");                                            \
-      if(request==0) {locsolo[i].temp[locsolo[i].count];  return;}    \
-      locsolo[i].state=request.toInt();                               \
-      locsolo[i].state--;                                             \
-      delay(10);                                                      \
-      Serial.println("7");                                            \
-      request = client.readStringUntil('\r');                         \
-      if(request==0) {Serial.println("Connection error");  return;}   \
-      delay(1);                                                       \
-      locsolo[i].voltage[locsolo[i].count]=request.toInt();           \
-      request = client.readStringUntil('\r');                         \
-      if(request==0) {Serial.println("Connection error");  return;}   \
-      delay(1);                                                       \
-      locsolo[i].temp[locsolo[i].count]=request.toFloat()*10;         \
-      request = client.readStringUntil('\r');                         \
-      if(request==0) {Serial.println("Connection error");  return;}   \
-      delay(1);                                                       \
-      locsolo[i].humidity=request.toInt();                            \
-      printstatus2(locsolo,i);                                        \
-      locsolo[i].login_epoch=now();                                   \
-      locsolo[i].timeout=0;                                           \
-      client.stop();                                                  \
-    }                                                                 \
-  }                                                                   \
-}
-*/
+/*-----------------------------------------OTA---------------------------------------------------------------------------------------------*/
+
+/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+  WiFiServer  TelnetDebug(18266);
+  WiFiClient  TelnetDebugClient;
+/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+
 void setup() {
   
   Serial.begin(115200);
@@ -257,6 +228,7 @@ void setup() {
     }                                                                             
   ETS_UART_INTR_ENABLE();
 #endif
+
   Serial.println(sizeof(sensor));
   Serial.println();  // Connect to WiFi network
   Serial.print(F("Connecting to "));
@@ -275,7 +247,9 @@ void setup() {
 
   Serial.println(F(""));
   Serial.println(F("WiFi connected"));
-#if version_two  
+
+/*-----------------------------------------OTA---------------------------------------------------------------------------------------------*/
+#if VERSION_TWO  
  ArduinoOTA.onStart([]() {
     Serial.println("Start");
   });
@@ -295,13 +269,24 @@ void setup() {
   });
   ArduinoOTA.begin();
 #endif
-#if version_one
+
+#if VERSION_ONE
     MDNS.begin(host);
     MDNS.addService("arduino", "tcp", aport);
     OTA.begin(aport);
     TelnetServer.begin();
     TelnetServer.setNoDelay(true);
 #endif
+/*-----------------------------------------OTA---------------------------------------------------------------------------------------------*/
+
+/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+#if TELNET_DEBUG  
+  TelnetDebug.begin();
+  TelnetDebug.setNoDelay(true);
+#endif
+/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+
+
   server.begin();     // Start the server
   Serial.println(F("Server started"));
   Serial.print(F("Use this URL to connect: "));    // Print the IP address
@@ -328,19 +313,23 @@ void setup() {
   if(sensor.count>SENSOR_MEMORY)  sensor.count=0;
   if(locsolo[0].count>LOCSOL_MEMORY) locsolo[0].count=0;
   WiFi.printDiag(Serial);
-  Serial.printf("Sketch size: %u\n", ESP.getSketchSize());
-  Serial.printf("Free size: %u\n", ESP.getFreeSketchSpace());
+  Serial.printf("heap size: %u\n", ESP.getFreeHeap());
+//  Serial.printf("Sketch size: %u\n", ESP.getSketchSize());
+//  Serial.printf("Free size: %u\n", ESP.getFreeSketchSpace());
 } 
 
 void loop() { 
-#if version_two  
+delay(100);
+#if VERSION_TWO  
   ArduinoOTA.handle();
 #endif
-#if version_one
+#if VERSION_ONE
   OTAhandle();
+  TelnetServer.available();
 #endif
-  delay(100);
-  //Serial.println("p:1");
+#if TELNET_DEBUG
+  TelnetDebugHandle();
+#endif
   if(timer_flag)
   {
     Serial.print(F("sensor.count:")); Serial.println(sensor.count);
@@ -362,11 +351,16 @@ void loop() {
     if(WiFi.status() != WL_CONNECTED) wifinc_count++;
     else wifinc_count=0;
     if(wifinc_count>5)  {Serial.println(F("No wifi connection")); reset_cmd();}
-    timer_flag=0;
+    if (TelnetDebugClient.connected()) {String debug_str=F("Time:"); debug_str+=hour(); debug_str+=":"; debug_str+=minute(); debug_str+=":"; debug_str+=second();
+                                        debug_str+=F("   Heap size:"); debug_str+=ESP.getFreeHeap(); TelnetDebugClient.println(debug_str);}
+    Serial.printf("heap size: %u\n", ESP.getFreeHeap());
     Serial.println(F("Periodic Timer end"));
+    timer_flag=0;
   }
-  WiFiClient client = server.available();
+  WiFiClient client;
+  client = server.available();
   if (!client) {                //Ha nincs kliens csatlakozva
+   client.flush(); client.stop();
    return;
   }
   Serial.println(F("p:2"));
@@ -379,13 +373,12 @@ void loop() {
     if(timeout>500) {Serial.println(F("INFINITE LOOP BREAK!"));  client.flush(); client.stop(); Serial.println(F("BREAK NOW!")); break;}
     }
     timeout=0;
-    
     String request = client.readStringUntil('\r');  // Read the first line of the request
     Serial.println(request);
-  
+    auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
     client_login(&request,&locsolo[0],&client,LOCSOLO_NUMBER);
-      delay(100);
-      if (request.indexOf("/locs1=on") != -1)  {
+    delay(100);
+    if (request.indexOf("/locs1=on") != -1)  {
       locsolo[0].set = HIGH;
       Serial.print(F("locsolo[0]="));
       Serial.println(locsolo[0].set);
@@ -424,15 +417,15 @@ void loop() {
         else  sensor.temperature_graph=0;
       if(response & (1<<1)) sensor.humidity_graph=1;
         else  sensor.humidity_graph=0;
-    for(int i=0;i<LOCSOLO_NUMBER;i++){      
-      if(response & (1<<(2+(2*i)))) locsolo[i].temperature_graph=1;
+      for(int i=0;i<LOCSOLO_NUMBER;i++){      
+        if(response & (1<<(2+(2*i)))) locsolo[i].temperature_graph=1;
         else  locsolo[i].temperature_graph=0;
-      if(response & (1<<(3+(2*i)))) locsolo[i].voltage_graph=1;
+        if(response & (1<<(3+(2*i)))) locsolo[i].voltage_graph=1;
         else  locsolo[i].voltage_graph=0;
-    Serial.print(F("temperature_graph:"));Serial.print(locsolo[i].temperature_graph);
-    Serial.print(F("voltage_graph:"));Serial.println(locsolo[i].voltage_graph);
-    }
-    html_settings(&client);
+        Serial.print(F("temperature_graph:"));Serial.print(locsolo[i].temperature_graph);
+        Serial.print(F("voltage_graph:"));Serial.println(locsolo[i].voltage_graph);
+      }
+      html_settings(&client);
     }
     
     else if (request.indexOf("properties") != -1)  {                        //peldaul dur:200 hour:8 min:15 dur:200 hour:8 min:15  --szimetrikus kovetkezo locsolohoz tartozik
@@ -440,7 +433,6 @@ void loop() {
       uint16_t dur,hou,mi;
       String r;
       uint16_t w;
-      char te[20];
       for(int i=0;i<LOCSOLO_NUMBER;i++){
       request.remove(0,request.indexOf("=")+1);
       r = request.substring(0,request.indexOf("&"));
@@ -475,10 +467,7 @@ void loop() {
      who_is_connected_HTML(&adress[0],&client);
     }
 #endif
-     else if(request.indexOf("GET / HTTP") != -1)  {
-          Serial.println(F("p:3"));
-          html_index(&client,&locsolo[0]);     // Return the response
-          }
+     else if(request.indexOf("GET / HTTP") != -1)  html_index(&client,&locsolo[0]);     // Return the response
 #if  ENABLE_IP
       request = client.readStringUntil('\r');  // Read the request
       who_is_connected(&adress[0],&request);
@@ -510,17 +499,23 @@ void who_is_connected(struct Adress *adr, String *s)
     return;
 }
 #endif
-void water_points()
+void water_points(struct Locsolo *locsol)
 {
     Serial.println(F("Debug---3:"));
     Serial.println(sensor.avg_3h);
-    if(sensor.avg_3h<15)                           sensor.water_points_increase=1;
+    uint8_t flag=0;
+    for(int i=0;i<LOCSOLO_NUMBER;i++) if(locsol[i].autom == 1) {flag=1; break;}
+    if(flag==1)
+    {
+    if(sensor.avg_3h<15)                      sensor.water_points_increase=1;
     if(15<sensor.avg_3h && sensor.avg_3h<20)  sensor.water_points_increase=2;
     if(20<sensor.avg_3h && sensor.avg_3h<25)  sensor.water_points_increase=3;
     if(25<sensor.avg_3h && sensor.avg_3h<30)  sensor.water_points_increase=4;
     if(30<sensor.avg_3h && sensor.avg_3h<35)  sensor.water_points_increase=5;
-    if(35<sensor.avg_3h)                           sensor.water_points_increase=6;
-    sensor.water_points+=sensor.water_points_increase;
+    if(35<sensor.avg_3h)                      sensor.water_points_increase=6;
+    sensor.water_points+=sensor.water_points_increase;  
+    }
+    else sensor.water_points_increase=0;
 }
 
 void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
@@ -545,17 +540,17 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(!(isnan(m) || isnan(n)))
   {
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
- //   dht_temp[dht_temp_count]=n;
- //   dht_temp_count++;
- //   if (dht_temp_count>=DHT_SENSOR_MEMORY) dht_temp_count=0;
+    if (dht_temp_count>=DHT_SENSOR_MEMORY) dht_temp_count=0;
+    dht_temp[dht_temp_count]=n;
+    dht_temp_count++;
     //-----------------------------------------------------------------------------------------------------------------------------------//
     sensor.count_dht++;
     sensor.humidity_measured += m;
     sensor.temperature_measured += n;
   } else Serial.println(F("Failed to read from DHT sensor!"));
   yield();
-  Serial.print(F("Humidity: ")); Serial.println(sensor.humidity_measured);
-  Serial.print(F("Temperature: ")); Serial.println(sensor.temperature_measured);
+  Serial.print(F("Humidity: ")); Serial.println(m);
+  Serial.print(F("Temperature: ")); Serial.println(n);
   if(sensor.count_dht>= DHT_AVARAGE){
     sensor.temperature_avg=sensor.temperature_measured/sensor.count_dht;
     sensor.humidity_avg=sensor.humidity_measured/sensor.count_dht;
@@ -567,9 +562,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     else sensor.epoch_saved_dt[sensor.count]=now()-sensor.time_previous;
     sensor.time_previous=now();
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem                
- //   if(dht_temp_count%DHT_AVARAGE == 0){
- //     dht_temp_avg[dht_temp_count/DHT_AVARAGE]=sensor.temperature_avg;
- //   }
+    if(dht_temp_count%DHT_AVARAGE == 0){
+      dht_temp_avg[(dht_temp_count/DHT_AVARAGE)-1]=sensor.temperature_avg;
+    }
     //-----------------------------------------------------------------------------------------------------------------------------------//
     if(sensor.count<(SENSOR_MEMORY-1)) sensor.count++;
         else {
@@ -625,12 +620,12 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     ETS_UART_INTR_ENABLE();  
 #endif
     }
-  Serial.print(F("DEBUG, Hoerzet, Homersekel:")); Serial.print(sensor.temperature_avg); Serial.print(F("   Paratartalom:")); Serial.print(sensor.humidity_avg);
-  sensor.heat_index = dht.computeHeatIndex(sensor.temperature_avg, sensor.humidity_avg, false);
-  Serial.print(F("   Hoerzet:")); Serial.println(sensor.heat_index);
+  Serial.print(F("Átlag hőmérséklet:")); Serial.print(sensor.temperature_avg); Serial.print(F("   Paratartalom:")); Serial.print(sensor.humidity_avg);
+  //sensor.heat_index = dht.computeHeatIndex(sensor.temperature_avg, sensor.humidity_avg, false);
+  //Serial.print(F("   Hoerzet:")); Serial.println(sensor.heat_index);
   if(sensor.temperature_avg != 0)  if(sensor.temperature_avg>sensor.Max) sensor.Max=sensor.temperature_avg;                                //Napi maximum hőmérsékletek megállapítása
   if(sensor.temperature_avg != 0)  if(sensor.temperature_avg<sensor.Min) sensor.Min=sensor.temperature_avg; 
-  if(day()!=sensor.thisday)  {Serial.print(F("DEBUG, sensor.avg_now:")); Serial.print(sensor.avg_now); Serial.print(F("   sensor.avg_count:")); Serial.println(sensor.avg_count);
+  if(day()!=sensor.thisday)  {//Serial.print(F("DEBUG, sensor.avg_now:")); Serial.print(sensor.avg_now); Serial.print(F("   sensor.avg_count:")); Serial.println(sensor.avg_count); 2016.1.18 delete if OK!
                                   sensor.Max=sensor.temperature_avg;  sensor.Min=sensor.temperature_avg;
                                   sensor.avg_previous=sensor.avg_now/sensor.avg_count; sensor.avg_count=0;  sensor.avg_now=0;
                                   for(int i=0;i<LOCSOLO_NUMBER;i++) {                                                                          //megallapitasa
@@ -639,24 +634,24 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
                                       
                                       }
                                   sensor.thisday=day();
-                                  Serial.print(F("   sensor.avg_previous:")); Serial.println(sensor.avg_previous);}
+                                  //Serial.print(F("   sensor.avg_previous:")); Serial.println(sensor.avg_previous); 2016.1.18 Delete if OK!
+  }
   if(hour()==11 && minute()<5             ) {sensor.avg_nr=1; sensor.avg_3h_temp=sensor.temperature_avg;}              //kiszámolom a 11 óra,13 óra és 15 óra körÄ‚Ä˝l mért hőmérséklet átlagát.
   if(hour()==13 && minute()<5 && sensor.avg_nr==1) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;}
-  if(hour()==15 && minute()<5 && sensor.avg_nr==2) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;  sensor.avg_3h=sensor.avg_3h_temp/3; sensor.avg_nr=0; water_points();} //megállapítom kell-e öntözni
-  Serial.print(F("Debug, avg_nr=")); Serial.print(sensor.avg_nr); Serial.print(F("  temp_avg="));  Serial.println(sensor.avg_3h);
+  if(hour()==15 && minute()<5 && sensor.avg_nr==2) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;  sensor.avg_3h=sensor.avg_3h_temp/3; sensor.avg_nr=0; water_points(&locsolo[0]);} //megállapítom kell-e öntözni
+  //Serial.print(F("Debug, avg_nr=")); Serial.print(sensor.avg_nr); Serial.print(F("  temp_avg="));  Serial.println(sensor.avg_3h); 2016.1.18 Delete if OK!
 }
 
 void auto_ontozes(struct Locsolo *locsol,uint8_t number){
-  for(int i=0;i<number;i++)
-  {
-    if(locsol[i].autom==1 && sensor.water_points>=7 && hour()==locsol[i].auto_watering_time.hour && minute()>locsol[i].auto_watering_time.minute && locsol[i].set==0)
+  for(int l=0;l<number;l++){
+    if(locsol[l].autom==1 && sensor.water_points>=7 && (hour()==locsol[l].auto_watering_time.hour || (hour()-1)==locsol[l].auto_watering_time.hour) && (minute()>=locsol[l].auto_watering_time.minute || (hour()-1)==locsol[l].auto_watering_time.hour) && locsol[l].set==0)
     {
-      Serial.println(F("Debug---1"));
-      Serial.println(F("Debug---1 AUTO locsolas"));
-      locsol[i].set=1; 
-      locsol[i].watering_epoch=now();
+      Serial.println(F("AUTO locsolas"));
+      locsol[l].set=1; 
+      locsol[l].auto_flag=1;
+//    locsol[l].watering_epoch=now();
 //    locsol[i].auto_watering_time.second=second(); locsol[i].auto_watering_time.minute=minute(); locsol[i].auto_watering_time.hour=hour(); locsol[i].auto_watering_time.weekday=weekday();
-#if ENABLE_FLASH
+/*#if ENABLE_FLASH
     ETS_UART_INTR_DISABLE();
   if(sizeof(locsolo)>4096){
     spi_flash_erase_sector(mem_sector0>>12);
@@ -679,15 +674,15 @@ void auto_ontozes(struct Locsolo *locsol,uint8_t number){
       spi_flash_write(mem_sector2,(uint32_t *)&sensor,sizeof(sensor));
       }
     ETS_UART_INTR_ENABLE();  
-#endif
+#endif*/
     }
-    if(now()-locsol[i].watering_epoch>locsol[i].duration && sensor.water_points>=7 && hour()==locsol[i].auto_watering_time.hour && minute()>locsol[i].auto_watering_time.minute)
+    if((now()-locsol[l].watering_epoch)>locsol[l].duration && sensor.water_points>=7 && locsol[l].set==1 && locsol[l].auto_flag==0)
     {
-      Serial.println(F("Debug---2"));
-      locsol[i].set=0; 
+      Serial.println(F("AUTO locsolas vége"));
+      locsol[l].set=0; 
       sensor.water_points-=7;
     }  
-  }  
+  }
 }
 
 void periodic_timer()                                                                     //This function is called periodically
@@ -703,21 +698,25 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
       printstatus1(locsol,i);                           //a soros porton kiírom ki csatlakozott
       Serial.println("1");
       //delay(10);
-      client->print(locsol[i].Name);                    //a kliensnek visszaküldöm a nevét, majd az egyenlőségjel után kiküldöm milyen állapotban kell lennie
-      client->println("=");
-      Serial.println("1");
+      if(client->connected())  client->print(locsol[i].Name);                    //a kliensnek visszaküldöm a nevét, majd az egyenlőségjel után kiküldöm milyen állapotban kell lennie
+      if(client->connected())  client->println("=");
+      Serial.println("2");
       //delay(10);
-      client->println(locsol[i].set);
+      if(client->connected())  client->println(locsol[i].set);
       //delay(10);
+      Serial.println("3");
       *request = client->readStringUntil('\r');        //a kliens visszaküldi milyen állapotban van
+      Serial.println("4");
       if(*request==0) {locsol[i].temp[locsol[i].count];  return;}
       locsol[i].state=request->toInt();
       locsol[i].state--;
       *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért feszültséget
+      Serial.println("5");
       if(*request==0) {Serial.println("Connection error");  return;}
       delay(1);
       locsol[i].voltage[locsol[i].count]=request->toInt();
       *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért hőmérsékletet
+      Serial.println("6");
       if(*request==0) {Serial.println("Connection error");  return;}
       delay(1);
       locsol[i].temp[locsol[i].count]=request->toFloat()*10;
@@ -728,9 +727,37 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
       
       //if(locsol[i].count>LOCSOL_MEMORY) locsol[i].count=0;  //delete line if OK
       printstatus2(locsol,i);                           //a soros portra kiírom milyen állapotban van a kliens
-      locsol[i].login_epoch=now();                           //mentem a csatlakozási időadatokat
+      if(now()> 946684800) locsol[i].login_epoch=now();                           //mentem a csatlakozási időadatokat
       locsol[i].timeout=0;                              //ha sokaig nincs csatlakozott kliens a timeout jelez 1-es értékkel
       client->stop();
+      if(now()> 946684800 && locsol[i].auto_flag==1) {
+        locsol[i].watering_epoch=now();
+        locsol[i].auto_flag=0;
+#if ENABLE_FLASH
+        ETS_UART_INTR_DISABLE();
+        if(sizeof(locsolo)>4096){
+          spi_flash_erase_sector(mem_sector0>>12);
+          spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],4096);
+          spi_flash_erase_sector(mem_sector1>>12);
+          spi_flash_write(mem_sector1,(uint32_t *)(&locsolo[0]+4096),LOCSOLO_NUMBER*sizeof(locsolo[0])-4096);
+        }
+        else{
+          spi_flash_erase_sector(mem_sector0>>12);
+          spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],LOCSOLO_NUMBER*sizeof(locsolo[0]));
+        }
+        if(sizeof(sensor)>4096){
+          spi_flash_erase_sector(mem_sector2>>12);
+          spi_flash_write(mem_sector2,(uint32_t *)&sensor,4096);
+          spi_flash_erase_sector(mem_sector3>>12);
+          spi_flash_write(mem_sector3,(uint32_t *)(&sensor+4096),sizeof(sensor)-4096);
+        }
+        else{
+          spi_flash_erase_sector(mem_sector2>>12);
+          spi_flash_write(mem_sector2,(uint32_t *)&sensor,sizeof(sensor));
+        }
+        ETS_UART_INTR_ENABLE();  
+#endif
+        }
     }
   }
 }
@@ -776,7 +803,8 @@ void load_default(struct Locsolo *locsol,uint8_t number)
    locsolo[i].voltage_graph=HIGH;
    locsol[i].auto_watering_time.hour=7;
    locsol[i].auto_watering_time.minute=1;
-   locsol[i].duration=100;
+   locsol[i].duration=600;
+   locsolo[i].auto_flag=0;
    locsolo[i].alias[0]='\n';
    strcpy(locsolo[i].alias,"ext.sensor1");
    locsolo[i].alias[10]=48+i+1;
@@ -799,7 +827,7 @@ void load_default(struct Locsolo *locsol,uint8_t number)
  sensor.humidity_measured=0;
  sensor.humidity_min=0;  
  sensor.humidity_max=0;
- sensor.water_points=0;
+ sensor.water_points=7;
  sensor.water_points_increase=0;
  sensor.count=0;
  sensor.count_dht=0;
@@ -866,6 +894,22 @@ void OTAhandle(){
       Serial.printf("Connect Failed: %u\n", millis() - startTime);
     }
   }
+}
+
+void TelnetDebugHandle(){
+  if (TelnetDebug.hasClient()){
+    //find free/disconnected spot
+      if (!TelnetDebugClient || TelnetDebugClient.connected()){
+        if(TelnetDebugClient) TelnetDebugClient.stop();
+        TelnetDebugClient = TelnetDebug.available();
+        Serial1.print("New client: ");
+        
+      }
+    //no free/disconnected spot so reject
+    WiFiClient serverClient = server.available();
+    serverClient.stop();
+  }
+  if(!TelnetDebugClient.connected()) TelnetDebugClient.stop();
 }
 
 // send an NTP request to the time server at the given address

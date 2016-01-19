@@ -155,6 +155,7 @@ ide:
     ESP.deepSleep(SLEEP_TIME,WAKE_RF_DEFAULT);
     delay(100); //ha sikeres csatlakozas és informacio csere tortént, de nincs magas jelszint az A0 labon (nem kell ontozni) alvasba kuldom a klienst
   }
-  delay(30000);    //ha magas jelszinten van az A0 kivezetes (kell ontozni) akkor nem kuldom alvasba a klienst csak alacsony fogyasztasu varakozo uezmmodba 30 masodpercig0                             
+  //delay(30000);    //ha magas jelszinten van az A0 kivezetes (kell ontozni) akkor nem kuldom alvasba a klienst csak alacsony fogyasztasu varakozo uezmmodba 30 masodpercig0                             
+  delay(60000);    //2016.1.17 ha magas jelszinten van az A0 kivezetes (kell ontozni) akkor nem kuldom alvasba a klienst csak alacsony fogyasztasu varakozo uezmmodba 60 masodpercig0                             
   }
 

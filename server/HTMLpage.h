@@ -194,7 +194,7 @@ s+=F("</p><br></body>\n"
     "statusDiv.innerHTML=html;}\n"
     ""
     "refreshStatus();\n"
-    "var interval=setInterval(refreshStatus,30000);\n"
+    "var interval=setInterval(refreshStatus,40000);\n"
     "</script>\n"
     ""
     "<script src=\"http://www.amcharts.com/lib/3/amcharts.js\"></script>"
@@ -509,6 +509,8 @@ void html_settings(WiFiClient *client)
         s+="öntözési időpont: "; s+=locsolo[i].auto_watering_time.hour; locsolo[i].auto_watering_time.minute < 10 ? s += ":0" : s += ":"; s+=locsolo[i].auto_watering_time.minute;
         s+="<br>Időtartam: "; s+=locsolo[i].duration/60; s+=" perc<br><br>";
       }*/
+ 
+  
   s+=F("</body>"
       "</html>"
     "<script src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js\"></script><script>"
@@ -521,7 +523,6 @@ void html_settings(WiFiClient *client)
           "$.get('/S:' + r);})"
       "</script>");
   client->println(s);
-
 }
 
 void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_){
@@ -566,11 +567,12 @@ void dht_status(WiFiClient *client)
   String s;
   s="DHT\n";
   for(int i=0;i<DHT_SENSOR_MEMORY;i++){
+    if(i%DHT_AVARAGE == 0 && i>0)  {s+=dht_temp_avg[i/10]; s+="\n\n\n";}
     s+=dht_temp[i];
     s+="\n";
-    if(i%DHT_AVARAGE == 0)  {s+=dht_temp_avg[i/10]; s+="\n\n\n";}
     //s+="<br>";
   }
   client->println(s);
 }
-
+    
+  
