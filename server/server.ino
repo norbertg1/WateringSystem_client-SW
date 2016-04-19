@@ -8,8 +8,8 @@
  *
  *
  *
- *Created by Norbi
- *  2015.8 - 2016.1
+ *Created by Gál Norbert
+ *  2015.8 - 2016.2
  * 
  */
 
@@ -47,7 +47,7 @@
 #define SERIAL_DEBUG 1
 #define FILTER  0.9
 #define VERSION_TWO 0
-#define VERSION_ONE 1
+#define VERSION_ONE 0
 #define ENABLE_FLASH 1
 #define TELNET_DEBUG 1
 //-------Flash memory map
@@ -78,6 +78,7 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
 void load_default(struct Locsolo *locsol,uint8_t number);
 void reset_cmd();
 void OTAhandle();
+void Telnet_print(uint8_t n,...);
 
 typedef struct
 {
@@ -94,32 +95,32 @@ short time_sync_weekday;         //Az a nap amikor szinkronizallom az idot
 struct __attribute__((aligned(4))) Locsolo
 {
   char      Name[9];
-  char      alias[20];             //hőmérséklet neve
-  char      short_name;           //rovid locsolo neve takarekossag vegett
+  char      alias[20];              //hőmérséklet neve
+  char      short_name;             //rovid locsolo neve takarekossag vegett
   short     set=LOW;                //Állapot amire állítom
   short     state=LOW;              //Állapot amiben jelenleg van
   short     autom=LOW;              //Automata öntözés be-ki kapcsolása
   short     timeout=LOW;            //Ha nincs kapcsolat a kliensel
-  uint16_t  voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszültsége
+  uint16_t   voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszültsége
   int16_t   temp[LOCSOL_MEMORY];    //A locsolo alltal mert feszultseg
-  uint8_t   humidity;                //A locsoló álltal mért páratartalom
+  int8_t    humidity;               //A locsoló álltal mért páratartalom
   uint16_t  count=0;                //hányszor mértem meg a feszültséget
   time_t    login_epoch=0;          //A kliensel létesített legutóbbi kapcsolat időpontja
   time_t    watering_epoch=0;       //Az automata öntözés időpontja epoch-ban
   time_t    duration=600;           //Eddig tart az ontozes
   Time      auto_watering_time;     //Az automata öntözés időpontja óra, perc, másodperc
-  uint8_t   temperature_graph;       //Toggle on/off temperature graph
+  uint8_t   temperature_graph;      //Toggle on/off temperature graph
   uint8_t   voltage_graph;          //Toggle on/off humidity graph
-  int16_t   temp_max=-273;           //napi minimum hőmerseklet
-  int16_t   temp_min=999;          //napi maximum hőmérséklet
-  uint8_t   auto_flag=0;          //for automated watering
+  int16_t   temp_max=-273;          //napi minimum hőmerseklet
+  int16_t   temp_min=999;           //napi maximum hőmérséklet
+  uint8_t   auto_flag=0;            //for automated watering
 };
 
 struct Locsolo locsolo[LOCSOLO_NUMBER];
 
 typedef struct
 {
-  float           temperature_avg=0;            //A jelenlegi hőmérséklet, a measuerd értéke átlaga
+  float           temperature_avg=0;          //A jelenlegi hőmérséklet, a measuerd értéke átlaga
   float           temperature_measured;
   float           avg_3h;         //11,13,15 órás átalghőmérséklet
   float           avg_3h_temp;    //11,13,15 órás átlaghőmérséklethez kell
@@ -146,6 +147,7 @@ typedef struct
   uint8_t         temperature_graph=1; //Toggle on/off temperature graph
   uint8_t         humidity_graph=1;    //Toggle on/off humidity graph
   uint8_t         thisday=0;            //for once/day running codes
+  uint8_t         wifi_reset;         //Number of reset becouse of bad wifi signal
 }Sensor;
 
 Sensor __attribute__((aligned(4))) sensor;
@@ -203,7 +205,6 @@ uint16_t dT;
 /*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
 
 void setup() {
-  
   Serial.begin(115200);
   delay(10);
   Serial.print(F("\n"));Serial.println(sizeof(locsolo[0]));
@@ -312,6 +313,7 @@ void setup() {
   Serial.print(F("locsolo.count:")); Serial.println(locsolo[0].count);
   if(sensor.count>SENSOR_MEMORY)  sensor.count=0;
   if(locsolo[0].count>LOCSOL_MEMORY) locsolo[0].count=0;
+  dht_temp_count=0;
   WiFi.printDiag(Serial);
   Serial.printf("heap size: %u\n", ESP.getFreeHeap());
 //  Serial.printf("Sketch size: %u\n", ESP.getSketchSize());
@@ -349,10 +351,12 @@ delay(100);
         }   
     }
     if(WiFi.status() != WL_CONNECTED) wifinc_count++;
-    else wifinc_count=0;
-    if(wifinc_count>5)  {Serial.println(F("No wifi connection")); reset_cmd();}
+    else {wifinc_count=0; Serial.print(F("wifinc_count=")); Serial.println(wifinc_count);}
+    if(wifinc_count>5)  {Serial.println(F("No wifi connection")); sensor.wifi_reset++; reset_cmd();}
     if (TelnetDebugClient.connected()) {String debug_str=F("Time:"); debug_str+=hour(); debug_str+=":"; debug_str+=minute(); debug_str+=":"; debug_str+=second();
-                                        debug_str+=F("   Heap size:"); debug_str+=ESP.getFreeHeap(); TelnetDebugClient.println(debug_str);}
+                                        debug_str+=F("   Heap size:"); debug_str+=ESP.getFreeHeap(); debug_str+=F(" wifi_reset="); debug_str+=sensor.wifi_reset; 
+                                        TelnetDebugClient.println(debug_str);}
+//    if (TelnetDebugClient.connected())  Telnet_print("Time:*",hour());
     Serial.printf("heap size: %u\n", ESP.getFreeHeap());
     Serial.println(F("Periodic Timer end"));
     timer_flag=0;
@@ -540,9 +544,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(!(isnan(m) || isnan(n)))
   {
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-    if (dht_temp_count>=DHT_SENSOR_MEMORY && sensor.count_dht>= DHT_AVARAGE) dht_temp_count=0;
-    dht_temp[dht_temp_count]=n;
-    dht_temp_count++;
+//    if (dht_temp_count>=DHT_SENSOR_MEMORY && sensor.count_dht>= DHT_AVARAGE) dht_temp_count=0;
+//    if (dht_temp_count<DHT_SENSOR_MEMORY) dht_temp[dht_temp_count]=n;
+//    if (dht_temp_count<=DHT_SENSOR_MEMORY)dht_temp_count++;
     //-----------------------------------------------------------------------------------------------------------------------------------//
     sensor.count_dht++;
     sensor.humidity_measured += m;
@@ -552,7 +556,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   Serial.print(F("Humidity: ")); Serial.println(m);
   Serial.print(F("Temperature: ")); Serial.println(n);
   if(sensor.count_dht>= DHT_AVARAGE){
-    sensor.temperature_avg=sensor.temperature_measured/sensor.count_dht;
+    sensor.temperature_avg=sensor.temperature_measured/sensor.count_dht; 
     sensor.humidity_avg=sensor.humidity_measured/sensor.count_dht;
     sensor.avg_now+=sensor.temperature_avg;  
     sensor.temperature_saved[sensor.count]=sensor.temperature_avg*10;
@@ -562,9 +566,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     else sensor.epoch_saved_dt[sensor.count]=now()-sensor.time_previous;
     sensor.time_previous=now();
     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem                
-    if(dht_temp_count%DHT_AVARAGE == 0){
-      dht_temp_avg[(dht_temp_count/DHT_AVARAGE)-1]=sensor.temperature_avg;
-    }
+//    if(dht_temp_count%DHT_AVARAGE == 0 && dht_temp_count<DHT_SENSOR_MEMORY){
+//      dht_temp_avg[(dht_temp_count/DHT_AVARAGE)-1]=sensor.temperature_avg;
+//    }
     //-----------------------------------------------------------------------------------------------------------------------------------//
     if(sensor.count<(SENSOR_MEMORY-1)) sensor.count++;
         else {
@@ -698,11 +702,11 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
       printstatus1(locsol,i);                           //a soros porton kiírom ki csatlakozott
       Serial.println("1");
       //delay(10);
-      if(client->connected())  client->print(locsol[i].Name);                    //a kliensnek visszaküldöm a nevét, majd az egyenlőségjel után kiküldöm milyen állapotban kell lennie
-      if(client->connected())  client->println("=");
+      if(client->connected())   client->print(locsol[i].Name);                    //a kliensnek visszaküldöm a nevét, majd az egyenlőségjel után kiküldöm milyen állapotban kell lennie
+      if(client->connected())   client->println("=");
       Serial.println("2");
       //delay(10);
-      if(client->connected())  client->println(locsol[i].set);
+      if(client->connected())   client->println(locsol[i].set);
       //delay(10);
       Serial.println("3");
       *request = client->readStringUntil('\r');        //a kliens visszaküldi milyen állapotban van
@@ -729,7 +733,7 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
       printstatus2(locsol,i);                           //a soros portra kiírom milyen állapotban van a kliens
       if(now()> 946684800) locsol[i].login_epoch=now();                           //mentem a csatlakozási időadatokat
       locsol[i].timeout=0;                              //ha sokaig nincs csatlakozott kliens a timeout jelez 1-es értékkel
-      client->stop();
+      if(client->connected())   client->stop();
       if(now()> 946684800 && locsol[i].auto_flag==1) {
         locsol[i].watering_epoch=now();
         locsol[i].auto_flag=0;
@@ -834,6 +838,8 @@ void load_default(struct Locsolo *locsol,uint8_t number)
  sensor.temperature_graph=HIGH;
  sensor.humidity_graph=HIGH;
  sensor.thisday=0;
+ sensor.wifi_reset=0;
+ dht_temp_count=0;
 }
 void time_out(struct Locsolo *locsol, uint8_t number)
 {
@@ -903,7 +909,9 @@ void TelnetDebugHandle(){
         if(TelnetDebugClient) TelnetDebugClient.stop();
         TelnetDebugClient = TelnetDebug.available();
         Serial1.print("New client: ");
-        
+        delay(500);
+        TelnetDebugClient.println("Welcome!");
+        delay(500);
       }
     //no free/disconnected spot so reject
     WiFiClient serverClient = server.available();
@@ -911,7 +919,28 @@ void TelnetDebugHandle(){
   }
   if(!TelnetDebugClient.connected()) TelnetDebugClient.stop();
 }
+/*********DEBUG via TELNET***********************************************************************
+ * 
+ * 
+ * 
+ */
 
+ /*
+void Telnet_print(uint8_t n,...)
+{
+  String data;
+  int i;
+  va_list lista;
+  data[0]=0;
+  va_start(lista, n);
+  for(i=0;i<n;i++)
+  {
+    data += (String)va_arg(lista, char);
+  }
+  TelnetDebugClient.println(data);
+}
+
+*/
 // send an NTP request to the time server at the given address
 unsigned long sendNTPpacket(IPAddress& address)
 {

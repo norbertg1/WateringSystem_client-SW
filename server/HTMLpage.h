@@ -86,13 +86,13 @@ String s;
               case 34:  s+=F("34.jpg\"><style>body{color:white}</style>");  break;
               case 35:  s+=F("35.jpg\"><style>body{color:white}</style>");  break;
               case 36:  s+=F("36.jpg\">");                                  break;
-              case 37:  s+=F("37.jpg\"><style>body{color:white}</style>");  break;
+              case 37:  s+=F("37.jpg\"><style>body{color:green}</style>");  break;
               case 38:  s+=F("38.jpg\">");                                  break;
               case 39:  s+=F("39.jpg\">");                                  break;
               case 40:  s+=F("40.jpg\">");                                  break;
               case 41:  s+=F("41.jpg\">");                                  break;
               case 42:  s+=F("42.jpg\">");                                  break;
-              case 43:  s+=F("43.jpg\"><style>body{color:white}</style>");  break;
+              case 43:  s+=F("43.jpg\">");  break;
                 }
              s+=F("<div id=\"szoveg\"><h1 style=\"margin-left:30%");
              if(r==4 || r==10 || r==17) s+=F(";color:black");
@@ -567,7 +567,7 @@ void dht_status(WiFiClient *client)
   String s;
   s="DHT\n";
   for(int i=0;i<DHT_SENSOR_MEMORY;i++){
-    if(i%DHT_AVARAGE == 0 && i>0)  {s+=dht_temp_avg[i/10]; s+="\n\n\n";}
+    if(i%DHT_AVARAGE == 0 && i>0)  {s+=dht_temp_avg[(i/10)-1]; s+="\n\n\n";}
     s+=dht_temp[i];
     s+="\n";
     //s+="<br>";
