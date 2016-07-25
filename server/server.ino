@@ -9,7 +9,7 @@
  *
  *
  *Created by Gál Norbert
- *  2015.8 - 2016.2
+ *  2015.8 - 2016.7
  * 
  */
 
@@ -17,12 +17,14 @@
 #include <WiFiUdp.h>
 #include <Ticker.h>
 #include <Time.h>
+#include <TimeLib.h>
 //#include <TimeLib.h>
 #include <DHT.h>
 #include "osapi.h" // timer
 #include "os_type.h" // timer
 #include <ESP8266mDNS.h>
-//#include <ArduinoOTA.h>
+#include "Timer.h"
+#include <ArduinoOTA.h>
 
 
 
@@ -30,7 +32,7 @@
 #define TIMER_PERIOD 60
 #define TIME_SYNC_INTERVAL 86400
 #define TIME_ZONE 1
-#define DAYLIGHT_SAVING 0
+#define DAYLIGHT_SAVING 1
 #define SECS_PER_HOUR 3600
 #define DHT_PIN 5
 #define DHT_TYPE DHT22
@@ -46,8 +48,8 @@
 #define DHT_SENSOR_MEMORY 100     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
 #define SERIAL_DEBUG 1
 #define FILTER  0.9
-#define VERSION_TWO 0
-#define VERSION_ONE 0
+#define VERSION_TWO 1           //OTA
+#define VERSION_ONE 0           //OTA
 #define ENABLE_FLASH 1
 #define TELNET_DEBUG 1
 //-------Flash memory map
@@ -101,7 +103,7 @@ struct __attribute__((aligned(4))) Locsolo
   short     state=LOW;              //Állapot amiben jelenleg van
   short     autom=LOW;              //Automata öntözés be-ki kapcsolása
   short     timeout=LOW;            //Ha nincs kapcsolat a kliensel
-  uint16_t   voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszültsége
+  uint16_t  voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszültsége
   int16_t   temp[LOCSOL_MEMORY];    //A locsolo alltal mert feszultseg
   int8_t    humidity;               //A locsoló álltal mért páratartalom
   uint16_t  count=0;                //hányszor mértem meg a feszültséget
@@ -139,7 +141,8 @@ typedef struct
   uint8_t         water_points_increase;
   int16_t         temperature_saved[SENSOR_MEMORY];
   uint8_t         humidity_saved[SENSOR_MEMORY];
-  unsigned long   epoch_saved;
+  unsigned long   epoch_saved;                        //Ezt majd kidobni
+  unsigned long   epoch_now;
   uint16_t        epoch_saved_dt[SENSOR_MEMORY];
   unsigned long   time_previous;
   uint16_t        count=0;
@@ -169,9 +172,10 @@ float     dht_temp[DHT_SENSOR_MEMORY];                    //about at 0 Celsius t
 float     dht_temp_avg[DHT_SENSOR_MEMORY/DHT_AVARAGE];    //the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
 uint8_t   dht_temp_count=0;    //about at 0 Celsius the readout of DHT22 sensor is fluctuating
                                       //the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-os_timer_t timer;
+//  os_timer_t timer;    //Delete if software timer is OK - 2016.7.21
 bool timer_flag;
 DHT dht(DHT_PIN,DHT_TYPE);
+Timer timer1;
 
 const char* ssid = "wifi";
 const char* password = "";
@@ -298,8 +302,9 @@ void setup() {
 
   udp.begin(localPort); //NTP time port
 
-  os_timer_setfn(&timer, (os_timer_func_t *)periodic_timer, NULL);
-  os_timer_arm(&timer, TIMER_PERIOD*1000, 1);
+//  os_timer_setfn(&timer, (os_timer_func_t *)periodic_timer, NULL);    //Delete if software timer is OK - 2016.7.21
+//  os_timer_arm(&timer, TIMER_PERIOD*1000, 1);
+  timer1.every(TIMER_PERIOD*1000, periodic_timer);
   setSyncProvider(getTime);
   setTime(getTime());
   setSyncInterval(TIME_SYNC_INTERVAL);
@@ -315,7 +320,11 @@ void setup() {
   if(locsolo[0].count>LOCSOL_MEMORY) locsolo[0].count=0;
   dht_temp_count=0;
   WiFi.printDiag(Serial);
-  Serial.printf("heap size: %u\n", ESP.getFreeHeap());
+  Serial.print(F("heap size: "));
+  Serial.println(ESP.getFreeHeap());
+  Serial.print(F("free sketch size: "));
+  Serial.println(ESP.getFreeSketchSpace());
+
 //  Serial.printf("Sketch size: %u\n", ESP.getSketchSize());
 //  Serial.printf("Free size: %u\n", ESP.getFreeSketchSpace());
 } 
@@ -332,6 +341,7 @@ delay(100);
 #if TELNET_DEBUG
   TelnetDebugHandle();
 #endif
+  timer1.update();
   if(timer_flag)
   {
     Serial.print(F("sensor.count:")); Serial.println(sensor.count);
@@ -368,8 +378,8 @@ delay(100);
    return;
   }
   Serial.println(F("p:2"));
-  temp_expire=timer.timer_expire;
-  os_timer_disarm(&timer);
+//  temp_expire=timer.timer_expire;    //Delete if software timer is OK - 2016.7.21
+//  os_timer_disarm(&timer);
   while(!client.available())   {
     Serial.print(F("."));    
     delay(1);   
@@ -463,6 +473,8 @@ delay(100);
      Serial.println(F("p:7"));
      status_respond(&client,&locsolo[0],LOCSOLO_NUMBER);
     }
+    
+    else if (request.indexOf("/reset_reason") != -1) {Serial.println(ESP.getResetReason()); client.println(ESP.getResetReason());}
     else if (request.indexOf("/dht_status") != -1) dht_status(&client);
     else if (request.indexOf("/reset") != -1) reset_cmd();
      
@@ -481,8 +493,8 @@ delay(100);
     delay(1);
     client.stop();
     Serial.println(F("p:5"));
-    os_timer_arm(&timer, TIMER_PERIOD*1000, 1);
-    timer.timer_expire=temp_expire;
+//    os_timer_arm(&timer, TIMER_PERIOD*1000, 1);    //Delete if software timer is OK - 2016.7.21
+//    timer.timer_expire=temp_expire;
     Serial.println(F("Client disonnected\n"));
     Serial.println(F("p:6"));
 }
@@ -555,49 +567,40 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   yield();
   Serial.print(F("Humidity: ")); Serial.println(m);
   Serial.print(F("Temperature: ")); Serial.println(n);
-  if(sensor.count_dht>= DHT_AVARAGE){
+  Serial.print(F("DHT count: "));   Serial.println(sensor.count_dht);
+  if(sensor.count_dht >= DHT_AVARAGE){
     sensor.temperature_avg=sensor.temperature_measured/sensor.count_dht; 
     sensor.humidity_avg=sensor.humidity_measured/sensor.count_dht;
     sensor.avg_now+=sensor.temperature_avg;  
-    sensor.temperature_saved[sensor.count]=sensor.temperature_avg*10;
-    sensor.humidity_saved[sensor.count]=sensor.humidity_avg;
-    //Serial.print(F("timeStatus:")); Serial.println(timeStatus());
-    if(sensor.count==0) sensor.epoch_saved=now()-3600;
-    else sensor.epoch_saved_dt[sensor.count]=now()-sensor.time_previous;
-    sensor.time_previous=now();
-    //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem                
-//    if(dht_temp_count%DHT_AVARAGE == 0 && dht_temp_count<DHT_SENSOR_MEMORY){
-//      dht_temp_avg[(dht_temp_count/DHT_AVARAGE)-1]=sensor.temperature_avg;
-//    }
-    //-----------------------------------------------------------------------------------------------------------------------------------//
-    if(sensor.count<(SENSOR_MEMORY-1)) sensor.count++;
-        else {
-          sensor.epoch_saved+=sensor.epoch_saved_dt[0];
-          for(int i=0;i<(SENSOR_MEMORY-1);i++) {
-            sensor.temperature_saved[i]=sensor.temperature_saved[i+1]; 
-            sensor.epoch_saved_dt[i]=sensor.epoch_saved_dt[i+1];                  
-          }
-        }
     sensor.temperature_measured=0;
     sensor.humidity_measured=0;    
     sensor.count_dht=0;
+    if((now() - sensor.epoch_now) > 65535) load_default(&locsolo[0],LOCSOLO_NUMBER);   //Ha 2^16 = 65535 ~ 18,2 oratol több idő telt el túlcsordulás történik és jobb ha resetelve van minden m
+    for(int i=SENSOR_MEMORY-1;i>=0;i--) {                          //Ha már elértem fogom a hőmérsékleti változókat és egyel odébb dobok mindent úgy hogy az
+      sensor.temperature_saved[i] = sensor.temperature_saved[i-1];    //az legkésőbbi érték elveszik
+      sensor.humidity_saved[i]    = sensor.humidity_saved[i-1];
+      sensor.epoch_saved_dt[i]    = sensor.epoch_saved_dt[i-1];
+      }
+    sensor.epoch_saved_dt[0]    = now() - sensor.epoch_now;
+    sensor.temperature_saved[0] = sensor.temperature_avg*10;
+    sensor.humidity_saved[0]    = sensor.humidity_avg;
+    sensor.epoch_now=now();
+    if(sensor.count<(SENSOR_MEMORY-1))  sensor.count++;                    //Ha még nem értem el a ESP8266 memória végét
     sensor.avg_count++;      //Napi átlaghőmérséklethez kell
     for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a klien feszültség és hőmérséklet értékei az előző értéket veszik fel
-      if(locsol[i].voltage[locsol[i].count]==0 && locsol[i].count>0) {
-        locsol[i].voltage[locsol[i].count]=locsol[i].voltage[locsol[i].count-1];
-        locsol[i].temp[locsol[i].count]=locsol[i].temp[locsol[i].count-1];      
+      for(int j=LOCSOL_MEMORY-1;j>=0;j--){
+        locsol[i].voltage[j]  = locsol[i].voltage[j-1];
+        locsol[i].temp[j]     = locsol[i].voltage[j-1];
       }
-      
-      if(locsol[i].count<(LOCSOL_MEMORY-1)) locsol[i].count++;
-        else { for(int j=0;j<(LOCSOL_MEMORY-1);j++) {locsol[i].voltage[j]=locsol[i].voltage[j+1]; locsol[i].temp[j]=locsol[i].temp[j+1];}}
-      
+      if(locsol[i].count<(LOCSOL_MEMORY-1)) locsol[i].count++;              //Ha még nem értem el a ESP8266 memória végét
     }
-    if(locsol[0].count>1){                                                                                            //Locsolo napi minimumok es maximumok
+    if(locsol[0].count>2){                                                                                            //Locsolo napi minimumok es maximumok
       for(int i=0;i<LOCSOLO_NUMBER;i++) {                                                                          //megallapitasa
       if(locsol[i].temp[locsol[i].count-1]<locsol[i].temp_min) locsol[i].temp_min=locsol[i].temp[locsol[i].count-1];
       if(locsol[i].temp[locsol[i].count-1]>locsol[i].temp_max) locsol[i].temp_max=locsol[i].temp[locsol[i].count-1];
       }
     }
+  }
     Serial.print(F("Writing flash memory:"));                          //FLASH Memory save
 #if ENABLE_FLASH
   ETS_UART_INTR_DISABLE();
@@ -623,13 +626,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
       }
     ETS_UART_INTR_ENABLE();  
 #endif
-    }
-  Serial.print(F("Átlag hőmérséklet:")); Serial.print(sensor.temperature_avg); Serial.print(F("   Paratartalom:")); Serial.print(sensor.humidity_avg);
-  //sensor.heat_index = dht.computeHeatIndex(sensor.temperature_avg, sensor.humidity_avg, false);
-  //Serial.print(F("   Hoerzet:")); Serial.println(sensor.heat_index);
-  if(sensor.temperature_avg != 0)  if(sensor.temperature_avg>sensor.Max) sensor.Max=sensor.temperature_avg;                                //Napi maximum hőmérsékletek megállapítása
-  if(sensor.temperature_avg != 0)  if(sensor.temperature_avg<sensor.Min) sensor.Min=sensor.temperature_avg; 
-  if(day()!=sensor.thisday)  {//Serial.print(F("DEBUG, sensor.avg_now:")); Serial.print(sensor.avg_now); Serial.print(F("   sensor.avg_count:")); Serial.println(sensor.avg_count); 2016.1.18 delete if OK!
+  if(sensor.temperature_avg != 0 && sensor.temperature_avg>sensor.Max) {sensor.Max=sensor.temperature_avg; }                              //Napi maximum hőmérsékletek megállapítása
+  if(sensor.temperature_avg != 0 && sensor.temperature_avg<sensor.Min) {sensor.Min=sensor.temperature_avg; }
+  if(day()!=sensor.thisday)  {
                                   sensor.Max=sensor.temperature_avg;  sensor.Min=sensor.temperature_avg;
                                   sensor.avg_previous=sensor.avg_now/sensor.avg_count; sensor.avg_count=0;  sensor.avg_now=0;
                                   for(int i=0;i<LOCSOLO_NUMBER;i++) {                                                                          //megallapitasa
@@ -643,7 +642,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   if(hour()==11 && minute()<5             ) {sensor.avg_nr=1; sensor.avg_3h_temp=sensor.temperature_avg;}              //kiszámolom a 11 óra,13 óra és 15 óra körül mért hőmérséklet átlagát.
   if(hour()==13 && minute()<5 && sensor.avg_nr==1) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;}
   if(hour()==15 && minute()<5 && sensor.avg_nr==2) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;  sensor.avg_3h=sensor.avg_3h_temp/3; sensor.avg_nr=0; water_points(&locsolo[0]);} //megállapítom kell-e öntözni
-  //Serial.print(F("Debug, avg_nr=")); Serial.print(sensor.avg_nr); Serial.print(F("  temp_avg="));  Serial.println(sensor.avg_3h); 2016.1.18 Delete if OK!
+  Serial.print(F("Debug, avg_nr=")); Serial.print(sensor.avg_nr); Serial.print(F("  temp_avg="));  Serial.println(sensor.avg_3h); //2016.1.18 Delete if OK!
 }
 
 void auto_ontozes(struct Locsolo *locsol,uint8_t number){
@@ -718,12 +717,12 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
       Serial.println("5");
       if(*request==0) {Serial.println("Connection error");  return;}
       delay(1);
-      locsol[i].voltage[locsol[i].count]=request->toInt();
+      locsol[i].voltage[0]=request->toInt();
       *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért hőmérsékletet
       Serial.println("6");
       if(*request==0) {Serial.println("Connection error");  return;}
       delay(1);
-      locsol[i].temp[locsol[i].count]=request->toFloat()*10;
+      locsol[i].temp[0]=request->toFloat()*10;
       *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért páratartalmat
       if(*request==0) {Serial.println("Connection error");  return;}
       delay(1);
@@ -1021,7 +1020,9 @@ time_t getTime()
     }
     Serial.println(epoch % 60); // print the second
     
-    epoch = secsSince1900 - seventyYears + (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;   //Convert to time zone and daylight saving
+    if(month()>10 || month()<4)   epoch = secsSince1900 - seventyYears + TIME_ZONE * SECS_PER_HOUR;   //Convert to time zone and daylight saving
+    else                          epoch = secsSince1900 - seventyYears + (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;   //Convert to time zone
+    Serial.println("return epoch");
     return epoch;
   }
 }

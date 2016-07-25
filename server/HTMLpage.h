@@ -1,6 +1,9 @@
 extern "C" {
 #include "user_interface.h"
 }
+
+
+
 void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_);
 void send_data_humidity(uint8_t *data,uint16_t *count,WiFiClient *client,String *s_);
 void send_data_voltage(uint16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_);
@@ -16,7 +19,7 @@ String s;
              "<meta charset=\"utf-8\">"
              "<title>webszerver</title>"
              "<link rel=\"stylesheet\" href=\"https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css\">"
-             "<link rel=\"shortcut icon\" href=\"http://locsol.pe.hu/locsol/favicon.ico\" type=\"image/x-icon\" />"
+             "<link rel=\"shortcut icon\" href=\"http://locsol.pe.hu/locsol/favicon.ico\">"
              "</head>"
              "<style>"
              "#szoveg {margin-left:1em;}"
@@ -207,12 +210,13 @@ s+=F("</p><br></body>\n"
     "var chartData=[];\n"
     "var firstDate=new Date();\n");
      
-
-       s+=F("var epoch=[");
+        s+=F("var epoch=");
+        if(month()>10 || month()<4)   s+=sensor.epoch_now - TIME_ZONE * SECS_PER_HOUR;
+        else                          s+=sensor.epoch_now - (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;
+       s+=F(";\nvar epoch_dt=[");
        for (i=0; i < sensor.count; i++)                      //sends the saved epoch data to HTML page graphs
          {
-         if(i==0) s+=sensor.epoch_saved;
-         else  s += sensor.epoch_saved_dt[i]; s += ",";
+         s += sensor.epoch_saved_dt[sensor.count-i]; s += ",";
          if(s.length()>2900) {client->print(s); s.remove(0);}
          }
        s+=F("];\n var temperature=[");
@@ -234,22 +238,23 @@ s+=F("</p><br></body>\n"
        s +=F("];\n");
         client->println(s);
         Serial.println("p:12");
- s  =F("var t=0;"
+ s  =F("var sum=0; for (var i=0; i<epoch_dt.length; i++) {sum+=epoch_dt[i];};"
+       "var t=epoch-sum;"
        "for (var i=0; i<temperature.length; i++) {\n"
-       "t=t+epoch[i];"
+       "t=t+epoch_dt[i];"
        "chartData.push({\n"
        "date: new Date(t*1000),\n"
-       "temperature: temperature[i],\n"
-       "humidity: humidity[i],\n"
-       "locs1_temp: locsolo1_temp[i],\n"
-       "locs1_voltage: locsolo1_voltage[i],\n"
+       "temperature: temperature[temperature.length-i],\n"
+       "humidity: humidity[humidity.length-i],\n"
+       "locs1_temp: locsolo1_temp[locsolo1_temp.length-i],\n"
+       "locs1_voltage: locsolo1_voltage[locsolo1_voltage.length-i],\n"
 #if LOCSOLO_NUMBER > 1
-       "locs2_temp: locsolo2_temp[i],\n"
-       "locs2_voltage: locsolo2_voltage[i],\n"
+       "locs2_temp: locsolo2_temp[locsolo2_temp.length-i],\n"
+       "locs2_voltage: locsolo2_voltage[locsolo2_voltage.length-i],\n"
 #endif
 #if LOCSOLO_NUMBER > 2
-       "locs3_temp: locsolo3_temp[i],\n"
-       "locs3_voltage: locsolo3_voltage[i],\n"        
+       "locs3_temp: locsolo3_temp[locsolo3_temp.length-i],\n"
+       "locs3_voltage: locsolo3_voltage[locsolo3_voltage.length-i],\n"        
 #endif       
        "});\n"
        "}\n"
