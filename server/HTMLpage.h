@@ -214,9 +214,9 @@ s+=F("</p><br></body>\n"
         if(month()>10 || month()<4)   s+=sensor.epoch_now - TIME_ZONE * SECS_PER_HOUR;
         else                          s+=sensor.epoch_now - (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;
        s+=F(";\nvar epoch_dt=[");
-       for (i=0; i < sensor.count; i++)                      //sends the saved epoch data to HTML page graphs
-         {
-         s += sensor.epoch_saved_dt[sensor.count-i]; s += ",";
+       for (i=0; i <= sensor.count; i++)                      //sends the saved epoch data to HTML page graphs
+         {            
+         s += sensor.epoch_saved_dt[i]; s += ",";
          if(s.length()>2900) {client->print(s); s.remove(0);}
          }
        s+=F("];\n var temperature=[");
@@ -241,20 +241,20 @@ s+=F("</p><br></body>\n"
  s  =F("var sum=0; for (var i=0; i<epoch_dt.length; i++) {sum+=epoch_dt[i];};"
        "var t=epoch-sum;"
        "for (var i=0; i<temperature.length; i++) {\n"
-       "t=t+epoch_dt[i];"
+       "t=t+epoch_dt[epoch_dt.length-i-1];"
        "chartData.push({\n"
        "date: new Date(t*1000),\n"
-       "temperature: temperature[temperature.length-i],\n"
-       "humidity: humidity[humidity.length-i],\n"
-       "locs1_temp: locsolo1_temp[locsolo1_temp.length-i],\n"
-       "locs1_voltage: locsolo1_voltage[locsolo1_voltage.length-i],\n"
+       "temperature: temperature[temperature.length-i-1],\n"
+       "humidity: humidity[humidity.length-i-1],\n"
+       "locs1_temp: locsolo1_temp[locsolo1_temp.length-i-1],\n"
+       "locs1_voltage: locsolo1_voltage[locsolo1_voltage.length-i-1],\n"
 #if LOCSOLO_NUMBER > 1
-       "locs2_temp: locsolo2_temp[locsolo2_temp.length-i],\n"
-       "locs2_voltage: locsolo2_voltage[locsolo2_voltage.length-i],\n"
+       "locs2_temp: locsolo2_temp[locsolo2_temp.length-i-1],\n"
+       "locs2_voltage: locsolo2_voltage[locsolo2_voltage.length-i-1],\n"
 #endif
 #if LOCSOLO_NUMBER > 2
-       "locs3_temp: locsolo3_temp[locsolo3_temp.length-i],\n"
-       "locs3_voltage: locsolo3_voltage[locsolo3_voltage.length-i],\n"        
+       "locs3_temp: locsolo3_temp[locsolo3_temp.length-i-1],\n"
+       "locs3_voltage: locsolo3_voltage[locsolo3_voltage.length-i-1],\n"        
 #endif       
        "});\n"
        "}\n"
@@ -532,12 +532,12 @@ void html_settings(WiFiClient *client)
 
 void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_){
   if(*sensor_count>*count) {                                     //Ez azert van, mert ha az ext. sensorok adataibol kevesebbet jegyez meg a program,
-          for(int j=0;j<((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
+          for(int j=0;j<=((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
             *s_+="0"; *s_+=",";                                         //tomb azonos meretu legyen
             if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
           }
          }
-  for (int i=0; i < *count; i++)
+  for (int i=0; i <= *count; i++)
          {
          *s_ += String((float)data[i]/10,2);
          *s_ += ",";
@@ -545,7 +545,7 @@ void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,
          }
 }
 void send_data_humidity(uint8_t *data,uint16_t *count,WiFiClient *client,String *s_){
-  for (int i=0; i < *count; i++)
+  for (int i=0; i <= *count; i++)
          {
          *s_ += data[i];
          *s_ += ",";
@@ -554,12 +554,12 @@ void send_data_humidity(uint8_t *data,uint16_t *count,WiFiClient *client,String 
 }
 void send_data_voltage(uint16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_){
    if(*sensor_count>*count) {                                     //Ez azert van, mert ha az ext. sensorok adataibol kevesebbet jegyez meg a program,
-          for(int j=0;j<((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
+          for(int j=0;j<=((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
             *s_+="0"; *s_+=",";                                         //tomb azonos meretu legyen
             if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
           }
          }
-  for (int i=0; i < *count; i++)
+  for (int i=0; i <= *count; i++)
          {
          *s_ += String((float)data[i]/1000,3);
          *s_ += ",";
