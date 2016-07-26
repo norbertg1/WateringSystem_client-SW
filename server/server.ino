@@ -24,10 +24,12 @@
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoOTA.h>
+extern "C" {
+#include "user_interface.h"
+}
 
-#define LOGIN_TIME_OUT 1000         //Azaz ido amikor a locsolo kliensre ami csatlakozott time outot ír ki, mert nem csatlakozik
 #define TIMER_PERIOD 60             //Ilyen gyakran mérek hőmérsékletet, légnyomást esetleg egyéb dolgot
-#define DHT_AVARAGE 10
+#define DHT_AVARAGE 10              //Ennyi hőmérsékeltmérésből mérek átlagot
 #define TIME_SYNC_INTERVAL 86400
 #define TIME_ZONE 1
 #define DAYLIGHT_SAVING 1
@@ -38,6 +40,7 @@
 #define AUTO_WATERING_HOUR    7   //Az automatikus öntözés kezdőpontja - default
 #define AUTO_WATERING_MINUTE  0
 #define AUTO_WATERING_TIME  100   //Az automatikus öntözés hossza másodpercekben
+#define LOGIN_TIME_OUT 1000         //Azaz ido amikor a locsolo kliensre ami csatlakozott time outot ír ki, mert nem csatlakozik
 #define LOCSOLO_NUMBER  2         //A locslók száma
 #define LOCSOL_MEMORY 800
 #define SENSOR_MEMORY 800
@@ -52,19 +55,6 @@
 #define mem_sector1             0x7c000
 #define mem_sector2             0x7d000
 #define mem_sector3             0x7e000
-
-void time_out(struct Locsolo *locsol, uint8_t number);
-struct Locsolo printstatus1(struct Locsolo *locsol,uint8_t i);
-void printstatus2(struct Locsolo *locsol,uint8_t i);
-time_t getTime();
-void periodic_timer(); 
-void DHT_sensor_read(struct Locsolo *locsol,uint8_t number);
-void auto_ontozes(struct Locsolo *locsol,uint8_t number);
-void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uint8_t number);
-void load_default(struct Locsolo *locsol,uint8_t number);
-void reset_cmd();
-void OTAhandle();
-void Telnet_print(uint8_t n,...);
 
 typedef struct
 {
@@ -163,44 +153,37 @@ const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of th
 byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 WiFiUDP udp;  // A UDP instance to let us send and receive packets over UDP
 #include "HTMLpage.h"
-extern "C" {
-#include "user_interface.h"
-}
+
 uint16_t dT;
-/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+
+void time_out(struct Locsolo *locsol, uint8_t number);
+struct Locsolo printstatus1(struct Locsolo *locsol,uint8_t i);
+void printstatus2(struct Locsolo *locsol,uint8_t i);
+time_t getTime();
+void periodic_timer(); 
+void DHT_sensor_read(struct Locsolo *locsol,uint8_t number);
+void auto_ontozes(struct Locsolo *locsol,uint8_t number);
+void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uint8_t number);
+void load_default(struct Locsolo *locsol,uint8_t number);
+void reset_cmd();
+void Telnet_print(uint8_t n,...);
+void read_flash(Sensor *sens, struct Locsolo *locsol);
+void write_flash(Sensor *sens, struct Locsolo *locsol);
+
+#if TELNET_DEBUG
   WiFiServer  TelnetDebug(18266);
   WiFiClient  TelnetDebugClient;
-/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+#endif
+
 #if OTA_WEB_BROWSER
   ESP8266WebServer httpServer(8266);
   ESP8266HTTPUpdateServer httpUpdater;
 #endif
+
 void setup() {
   Serial.begin(115200);
   delay(10);
-  Serial.print(F("\n"));Serial.println(sizeof(locsolo[0]));
-  Serial.println(sizeof(locsolo));
-  Serial.println(sizeof(Locsolo));
-#if ENABLE_FLASH
-  ETS_UART_INTR_DISABLE();
-  if(sizeof(locsolo)>4096){
-    spi_flash_read(mem_sector0,(uint32_t *)&locsolo[0],4096);
-    spi_flash_read(mem_sector1,(uint32_t *)(&locsolo[0]+4096),LOCSOLO_NUMBER*sizeof(locsolo[0])-4096);
-  }else
-    {
-    spi_flash_read(mem_sector0,(uint32_t *)&sensor,LOCSOLO_NUMBER*sizeof(locsolo[0]));
-    } 
-  delay(10);
-  if(sizeof(sensor)>4096){
-    spi_flash_read(mem_sector2,(uint32_t *)&sensor,4096);
-    spi_flash_read(mem_sector3,(uint32_t *)(&sensor+4096),sizeof(sensor)-4096);
-  }else
-    {
-    spi_flash_read(mem_sector2,(uint32_t *)&sensor,sizeof(sensor));
-    }                                                                             
-  ETS_UART_INTR_ENABLE();
-#endif
-
+  read_flash(&sensor,&locsolo[0]);
   Serial.println(sizeof(sensor));
   Serial.println();  // Connect to WiFi network
   Serial.print(F("Connecting to "));
@@ -216,7 +199,6 @@ void setup() {
       ESP.restart();
     }
   }
-
   Serial.println(F(""));
   Serial.println(F("WiFi connected"));
 
@@ -522,30 +504,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     if(sensor.temperature_avg != 0 && sensor.temperature_avg<sensor.Min) {sensor.Min=sensor.temperature_avg; }
   }
   Serial.print(F("Writing flash memory:"));                          //FLASH Memory save
-#if ENABLE_FLASH
-  ETS_UART_INTR_DISABLE();
-  if(sizeof(locsolo)>4096){
-    spi_flash_erase_sector(mem_sector0>>12);
-    spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],4096);
-    spi_flash_erase_sector(mem_sector1>>12);
-    spi_flash_write(mem_sector1,(uint32_t *)(&locsolo[0]+4096),LOCSOLO_NUMBER*sizeof(locsolo[0])-4096);
-  }else
-    {
-    spi_flash_erase_sector(mem_sector0>>12);
-    spi_flash_write(mem_sector0,(uint32_t *)&sensor,LOCSOLO_NUMBER*sizeof(locsolo[0]));
-    }
-    if(sizeof(sensor)>4096){
-      spi_flash_erase_sector(mem_sector2>>12);
-      spi_flash_write(mem_sector2,(uint32_t *)&sensor,4096);
-      spi_flash_erase_sector(mem_sector3>>12);
-      spi_flash_write(mem_sector3,(uint32_t *)(&sensor+4096),sizeof(sensor)-4096);
-    }else
-      {
-      spi_flash_erase_sector(mem_sector2>>12);
-      spi_flash_write(mem_sector2,(uint32_t *)&sensor,sizeof(sensor));
-      }
-    ETS_UART_INTR_ENABLE();  
-#endif
+  write_flash(&sensor,&locsolo[0]);
   if(day()!=sensor.thisday)  {
                                   sensor.Max=-273;  sensor.Min=999;
                                   sensor.avg_previous=sensor.avg_now/sensor.daily_avg_cnt; sensor.daily_avg_cnt=0;  sensor.avg_now=0;
@@ -591,30 +550,7 @@ void auto_ontozes(struct Locsolo *locsol,uint8_t number){
       locsol[l].auto_flag=1;
 //    locsol[l].watering_epoch=now();
 //    locsol[i].auto_watering_time.second=second(); locsol[i].auto_watering_time.minute=minute(); locsol[i].auto_watering_time.hour=hour(); locsol[i].auto_watering_time.weekday=weekday();
-/*#if ENABLE_FLASH
-    ETS_UART_INTR_DISABLE();
-  if(sizeof(locsolo)>4096){
-    spi_flash_erase_sector(mem_sector0>>12);
-    spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],4096);
-    spi_flash_erase_sector(mem_sector1>>12);
-    spi_flash_write(mem_sector1,(uint32_t *)(&locsolo[0]+4096),LOCSOLO_NUMBER*sizeof(locsolo[0])-4096);
-  }else
-    {
-    spi_flash_erase_sector(mem_sector0>>12);
-    spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],LOCSOLO_NUMBER*sizeof(locsolo[0]));
-    }
-    if(sizeof(sensor)>4096){
-      spi_flash_erase_sector(mem_sector2>>12);
-      spi_flash_write(mem_sector2,(uint32_t *)&sensor,4096);
-      spi_flash_erase_sector(mem_sector3>>12);
-      spi_flash_write(mem_sector3,(uint32_t *)(&sensor+4096),sizeof(sensor)-4096);
-    }else
-      {
-      spi_flash_erase_sector(mem_sector2>>12);
-      spi_flash_write(mem_sector2,(uint32_t *)&sensor,sizeof(sensor));
-      }
-    ETS_UART_INTR_ENABLE();  
-#endif*/
+//    write_flash(&sensor,&locsolo[0]);
     }
     if((now()-locsol[l].watering_epoch)>locsol[l].duration && sensor.water_points>=7 && locsol[l].set==1 && locsol[l].auto_flag==0)
     {
@@ -672,30 +608,7 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
       if(now()> 946684800 && locsol[i].auto_flag==1) {
         locsol[i].watering_epoch=now();
         locsol[i].auto_flag=0;
-#if ENABLE_FLASH
-        ETS_UART_INTR_DISABLE();
-        if(sizeof(locsolo)>4096){
-          spi_flash_erase_sector(mem_sector0>>12);
-          spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],4096);
-          spi_flash_erase_sector(mem_sector1>>12);
-          spi_flash_write(mem_sector1,(uint32_t *)(&locsolo[0]+4096),LOCSOLO_NUMBER*sizeof(locsolo[0])-4096);
-        }
-        else{
-          spi_flash_erase_sector(mem_sector0>>12);
-          spi_flash_write(mem_sector0,(uint32_t *)&locsolo[0],LOCSOLO_NUMBER*sizeof(locsolo[0]));
-        }
-        if(sizeof(sensor)>4096){
-          spi_flash_erase_sector(mem_sector2>>12);
-          spi_flash_write(mem_sector2,(uint32_t *)&sensor,4096);
-          spi_flash_erase_sector(mem_sector3>>12);
-          spi_flash_write(mem_sector3,(uint32_t *)(&sensor+4096),sizeof(sensor)-4096);
-        }
-        else{
-          spi_flash_erase_sector(mem_sector2>>12);
-          spi_flash_write(mem_sector2,(uint32_t *)&sensor,sizeof(sensor));
-        }
-        ETS_UART_INTR_ENABLE();  
-#endif
+//      write_flash(&sensor,&locsolo[0]);
         }
     }
   }
@@ -829,8 +742,56 @@ void Telnet_print(uint8_t n,...)
   }
   TelnetDebugClient.println(data);
 }
-
 */
+
+void read_flash(Sensor *sens, struct Locsolo *locsol){
+  #if ENABLE_FLASH
+    ETS_UART_INTR_DISABLE();
+    if(sizeof(locsol)>4096){
+      spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],4096);
+      spi_flash_read(mem_sector1,(uint32_t *)(&locsol[0]+4096),LOCSOLO_NUMBER*sizeof(locsol[0])-4096);
+    }else
+      {
+      spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
+      } 
+    delay(10);
+    if(sizeof(sens)>4096){
+      spi_flash_read(mem_sector2,(uint32_t *)&sens,4096);
+      spi_flash_read(mem_sector3,(uint32_t *)(&sens+4096),sizeof(sens)-4096);
+    }else
+      {
+      spi_flash_read(mem_sector2,(uint32_t *)&sens,sizeof(sens));
+      }                                                                             
+    ETS_UART_INTR_ENABLE();
+  #endif
+}
+
+void write_flash(Sensor *sens, struct Locsolo *locsol){
+  #if ENABLE_FLASH
+    ETS_UART_INTR_DISABLE();
+    if(sizeof(locsol)>4096){
+      spi_flash_erase_sector(mem_sector0>>12);
+      spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],4096);
+      spi_flash_erase_sector(mem_sector1>>12);
+      spi_flash_write(mem_sector1,(uint32_t *)(&locsol[0]+4096),LOCSOLO_NUMBER*sizeof(locsol[0])-4096);
+    }else
+      {
+      spi_flash_erase_sector(mem_sector0>>12);
+      spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
+      }
+      if(sizeof(sens)>4096){
+        spi_flash_erase_sector(mem_sector2>>12);
+        spi_flash_write(mem_sector2,(uint32_t *)&sens,4096);
+        spi_flash_erase_sector(mem_sector3>>12);
+        spi_flash_write(mem_sector3,(uint32_t *)(&sens+4096),sizeof(sens)-4096);
+      }else
+        {
+        spi_flash_erase_sector(mem_sector2>>12);
+        spi_flash_write(mem_sector2,(uint32_t *)&sens,sizeof(sens));
+        }
+      ETS_UART_INTR_ENABLE();  
+  #endif
+}
 // send an NTP request to the time server at the given address
 unsigned long sendNTPpacket(IPAddress& address)
 {
