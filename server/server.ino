@@ -13,181 +13,17 @@
  * 
  */
 
-#include <ESP8266WiFi.h>
-#include <WiFiUdp.h>
-#include <Ticker.h>
-#include <Time.h>
-#include <TimeLib.h>
-#include "Timer.h"
-#include <DHT.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266HTTPUpdateServer.h>
-#include <ESP8266WebServer.h>
-#include <ArduinoOTA.h>
-extern "C" {
-#include "user_interface.h"
-}
-
-#define TIMER_PERIOD 60             //Ilyen gyakran mérek hőmérsékletet, légnyomást esetleg egyéb dolgot
-#define DHT_AVARAGE 10              //Ennyi hőmérsékeltmérésből mérek átlagot
-#define TIME_SYNC_INTERVAL 86400
-#define TIME_ZONE 1
-#define DAYLIGHT_SAVING 1
-#define SECS_PER_HOUR 3600
-#define DHT_PIN 5
-#define DHT_TYPE DHT22
-#define DHT_SENSOR_MEMORY 100     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-#define AUTO_WATERING_HOUR    7   //Az automatikus öntözés kezdőpontja - default
-#define AUTO_WATERING_MINUTE  0
-#define AUTO_WATERING_TIME  100   //Az automatikus öntözés hossza másodpercekben
-#define LOGIN_TIME_OUT 1000         //Azaz ido amikor a locsolo kliensre ami csatlakozott time outot ír ki, mert nem csatlakozik
-#define LOCSOLO_NUMBER  2         //A locslók száma
-#define LOCSOL_MEMORY 800
-#define SENSOR_MEMORY 800
-#define ENABLE_IP 0                 //Bekapcsolja a legutóbbi 10 csatlakozott eszköz IP címének megjegyzését és kijelzését
-#define IP_TIMEOUT  3600            //ha ugyanarrola az IPről jelentkezek be ennyi másodpercnek kell eltelnie hogy megjegyezze
-#define OTA_ARDUINO_IDE 1           //OTA via Arduino
-#define OTA_WEB_BROWSER 1           //OTA via Web Browser
-#define ENABLE_FLASH 1
-#define TELNET_DEBUG 1
-//-------Flash memory map
-#define mem_sector0             0x7b000
-#define mem_sector1             0x7c000
-#define mem_sector2             0x7d000
-#define mem_sector3             0x7e000
-
-typedef struct
-{
-  short hour;
-  short minute;
-  short second;
-  short weekday;
-}Time;
-Time server_start;
-
-struct __attribute__((aligned(4))) Locsolo
-{
-  char      Name[9];
-  char      alias[20];              //hőmérséklet neve
-  char      short_name;             //rovid locsolo neve takarekossag vegett
-  short     set=LOW;                //Állapot amire állítom
-  short     state=LOW;              //Állapot amiben jelenleg van
-  short     autom=LOW;              //Automata öntözés be-ki kapcsolása
-  short     timeout=LOW;            //Ha nincs kapcsolat a kliensel
-  uint16_t  voltage[LOCSOL_MEMORY]; //A locsoló akumulátor feszültsége
-  int16_t   temp[LOCSOL_MEMORY];    //A locsolo alltal mert feszultseg
-  int8_t    humidity;               //A locsoló álltal mért páratartalom
-  uint16_t  count=0;                //hányszor mértem meg a feszültséget
-  time_t    login_epoch=0;          //A kliensel létesített legutóbbi kapcsolat időpontja
-  time_t    watering_epoch=0;       //Az automata öntözés időpontja epoch-ban
-  time_t    duration=600;           //Eddig tart az ontozes
-  Time      auto_watering_time;     //Az automata öntözés időpontja óra, perc, másodperc
-  uint8_t   temperature_graph;      //Toggle on/off temperature graph
-  uint8_t   voltage_graph;          //Toggle on/off humidity graph
-  int16_t   temp_max=-273;          //napi minimum hőmerseklet
-  int16_t   temp_min=999;           //napi maximum hőmérséklet
-  uint8_t   auto_flag=0;            //for automated watering
-};
-struct Locsolo locsolo[LOCSOLO_NUMBER];
-
-typedef struct
-{
-  float           temperature_avg=0;          //A jelenlegi hőmérséklet, a measuerd értéke átlaga
-  float           temperature_measured;
-  float           avg_3h;         //11,13,15 órás átalghőmérséklet
-  float           avg_3h_temp;    //11,13,15 órás átlaghőmérséklethez kell
-  uint8_t         avg_nr;         //11,13,15 órás átlaghőmérséklethez kell
-  float           avg_previous=0;    //a mar kiszamitott előzőnapi átlag hőmérsékelt
-  float           avg_now=0;        //a mai napi hőmérséklet amiből az átlag lesz számítva, akkumulálódik állandóan
-  uint16_t        daily_avg_cnt=0;       //ennyi darab értékből számolom ki a napi átlaghőmérsékletet
-  float           Min=999;       //minimum hőmérséklet
-  float           Max=-273.15;   //maximum hőmérséklet
-  float           heat_index;   //hőérzet
-  float           humidity_avg=0;     //
-  float           humidity_measured;
-  float           humidity_min=100;  
-  float           humidity_max=0;  
-  uint8_t         water_points=0;
-  uint8_t         water_points_increase;
-  int16_t         temperature_saved[SENSOR_MEMORY];
-  uint8_t         humidity_saved[SENSOR_MEMORY];
-  unsigned long   epoch_saved;                        //Ezt majd kidobni
-  unsigned long   epoch_now;
-  uint16_t        epoch_saved_dt[SENSOR_MEMORY];
-  unsigned long   time_previous;
-  uint16_t        count=0;
-  uint8_t         count_dht=0;
-  uint8_t         temperature_graph=1; //Toggle on/off temperature graph
-  uint8_t         humidity_graph=1;    //Toggle on/off humidity graph
-  uint8_t         thisday=0;            //for once/day running codes
-  uint8_t         wifi_reset;         //Number of reset becouse of bad wifi signal
-}Sensor;
-Sensor __attribute__((aligned(4))) sensor;
-
-struct  Adress
-{
-  String          IP;              //connected clients IP adress
-  unsigned long   epoch;     //the time when the client is connected
-  uint8_t         count=0;
-};
-Adress adress[10];
-
-bool      flag = 0;
-time_t    epoch_previous=0;           //Mielott aktualizallom az idot, elmentem a jelenlegit arra az esetre ha nem mukodne az aktualizacio
-uint16_t  timeout=0;
-uint32_t  temp_expire;
-uint8_t   wifinc_count=0;
-float     dht_temp[DHT_SENSOR_MEMORY];                    //about at 0 Celsius the readout of DHT22 sensor is fluctuating
-float     dht_temp_avg[DHT_SENSOR_MEMORY/DHT_AVARAGE];    //the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
-bool      timer_flag;
-DHT dht(DHT_PIN,DHT_TYPE);
-Timer timer1;
-
-const char* ssid = "wifi";
-const char* password = "";
- 
-WiFiServer server(80);
-unsigned int localPort = 2390;      // local port to listen for UDP packets
-IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
-const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
-byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
-WiFiUDP udp;  // A UDP instance to let us send and receive packets over UDP
-#include "HTMLpage.h"
-
-uint16_t dT;
-
-void time_out(struct Locsolo *locsol, uint8_t number);
-struct Locsolo printstatus1(struct Locsolo *locsol,uint8_t i);
-void printstatus2(struct Locsolo *locsol,uint8_t i);
-time_t getTime();
-void periodic_timer(); 
-void DHT_sensor_read(struct Locsolo *locsol,uint8_t number);
-void auto_ontozes(struct Locsolo *locsol,uint8_t number);
-void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uint8_t number);
-void load_default(struct Locsolo *locsol,uint8_t number);
-void reset_cmd();
-void Telnet_print(uint8_t n,...);
-void read_flash(Sensor *sens, struct Locsolo *locsol);
-void write_flash(Sensor *sens, struct Locsolo *locsol);
-
-#if TELNET_DEBUG
-  WiFiServer  TelnetDebug(18266);
-  WiFiClient  TelnetDebugClient;
-#endif
-
-#if OTA_WEB_BROWSER
-  ESP8266WebServer httpServer(8266);
-  ESP8266HTTPUpdateServer httpUpdater;
-#endif
+#include "server.h"
 
 void setup() {
   Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  WiFi.printDiag(Serial);
   delay(10);
+  Serial.print("locsolo_cim: "); Serial.println((uint32_t)((uint32_t *)&locsolo[0]));
+  Serial.print("sens_cim: "); Serial.println((uint32_t)((uint32_t *)&sensor));
   read_flash(&sensor,&locsolo[0]);
-  Serial.println(sizeof(sensor));
-  Serial.println();  // Connect to WiFi network
-  Serial.print(F("Connecting to "));
-  Serial.println(ssid);
+  Serial.print(F("Connecting to "));  Serial.println(ssid);
   WiFi.begin(ssid, password);
   uint8_t count=0;
   while (WiFi.status() != WL_CONNECTED) {
@@ -199,78 +35,40 @@ void setup() {
       ESP.restart();
     }
   }
-  Serial.println(F(""));
-  Serial.println(F("WiFi connected"));
-
-/*-----------------------------------------OTA---------------------------------------------------------------------------------------------*/
-#if OTA_ARDUINO_IDE  
- ArduinoOTA.onStart([]() {
-    Serial.println("Start");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("End");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  ArduinoOTA.begin();
-#endif
-#if OTA_WEB_BROWSER
-    httpUpdater.setup(&httpServer);
-    httpServer.begin();
-#endif
-/*-----------------------------------------OTA---------------------------------------------------------------------------------------------*/
-
-/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
-#if TELNET_DEBUG  
-  TelnetDebug.begin();
-  TelnetDebug.setNoDelay(true);
-#endif
-/*-------------------------------------Telnet Debug----------------------------------------------------------------------------------------*/
+  Serial.println(F("\nWiFi connected"));
+  ota_arduino_ide();  //átirni INLINE vagz makro kodra
+  ota_web_browser();
+  telnet_debug();
   server.begin();     // Start the server
-  Serial.println(F("Server started"));
   dht.begin();              // initialize temperature sensor
   udp.begin(localPort);     //NTP time port
   setSyncProvider(getTime);
-  setTime(getTime());
   setSyncInterval(TIME_SYNC_INTERVAL);
+  setTime(getTime());
   timer1.every(TIMER_PERIOD*1000, periodic_timer);
-
+  strcpy(locsolo[0].Name,"locsolo1");  strcpy(locsolo[1].Name,"locsolo2");  strcpy(locsolo[2].Name,"locsolo3");
   Serial.print(F("Free Heap Size:")); Serial.println(system_get_free_heap_size());
-  Serial.setDebugOutput(true);
-  strcpy(locsolo[0].Name,"locsolo1");
-  strcpy(locsolo[1].Name,"locsolo2");
-  strcpy(locsolo[2].Name,"locsolo3");
   Serial.print(F("sensor.count:")); Serial.println(sensor.count);
-  Serial.print(F("locsolo.count:")); Serial.println(locsolo[0].count);
+  Serial.print(F("locsolo[0].count:")); Serial.println(locsolo[0].count);
+  Serial.print(F("heap size: "));  Serial.println(ESP.getFreeHeap());
+  Serial.print(F("free sketch size: "));  Serial.println(ESP.getFreeSketchSpace());
   if(sensor.count>=SENSOR_MEMORY)  sensor.count=0;
   if(locsolo[0].count>=LOCSOL_MEMORY) locsolo[0].count=0;
-  WiFi.printDiag(Serial);
-  Serial.print(F("heap size: "));
-  Serial.println(ESP.getFreeHeap());
-  Serial.print(F("free sketch size: "));
-  Serial.println(ESP.getFreeSketchSpace());
-} 
-
+}
+    
 void loop() { 
   delay(20);
-  #if OTA_ARDUINO_IDE  
+  #if OTA_ARDUINO_IDE
     ArduinoOTA.handle();
   #endif
-  #if OTA_WEB_BROWSER
-    httpServer.handleClient();
-  #endif
+  #if OTA_WEB_BROWSER            
+    httpServer.handleClient();   
+  #endif  
   #if TELNET_DEBUG
-    TelnetDebugHandle();
-  #endif
+    TelnetDebugHandle();          
+  #endif      
+//  OTA_WEB_BROWSER_HANDLE
+//  TELNET_DEBUG_HANDLE
   timer1.update();
   if(timer_flag)
   {
@@ -283,7 +81,6 @@ void loop() {
       DHT_sensor_read(&locsolo[0],LOCSOLO_NUMBER);
       auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
       if(flag==0){
-        now();
         server_start.second=second();
         server_start.minute=minute();
         server_start.hour=hour();
@@ -369,7 +166,6 @@ void loop() {
       }
       html_settings(&client);
     }
-    
     else if (request.indexOf("properties") != -1)  {                        //peldaul dur:200 hour:8 min:15 dur:200 hour:8 min:15  --szimetrikus kovetkezo locsolohoz tartozik
       Serial.println(F("p:20"));
       uint16_t dur,hou,mi;
@@ -475,6 +271,8 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     sensor.temperature_measured=0;
     sensor.humidity_measured=0;    
     sensor.count_dht=0;
+    sensor.daily_avg_cnt++;                                                //Napi átlaghőmérséklethez kell
+    if(sensor.count<(SENSOR_MEMORY-1))  sensor.count++;                    //Ha még nem értem el a ESP8266 memória végét
     if((now() - sensor.epoch_now) > 65535) load_default(&locsolo[0],LOCSOLO_NUMBER);   //Ha 2^16 = 65535 ~ 18,2 oratol több idő telt el túlcsordulás történik és jobb ha resetelve van minden, a későbbiekben talán jobb nem lenullázni mindent pl. beállítások
     for(int i=SENSOR_MEMORY-1;i>0;i--) {                          //Ha már elértem fogom a hőmérsékleti változókat és egyel odébb dobok mindent úgy hogy az
       sensor.temperature_saved[i] = sensor.temperature_saved[i-1];    //az legkésőbbi érték elveszik
@@ -485,8 +283,6 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     sensor.temperature_saved[0] = sensor.temperature_avg*10;
     sensor.humidity_saved[0]    = sensor.humidity_avg;
     sensor.epoch_now=now();
-    if(sensor.count<(SENSOR_MEMORY-1))  sensor.count++;                    //Ha még nem értem el a ESP8266 memória végét
-    sensor.daily_avg_cnt++;      //Napi átlaghőmérséklethez kell
     for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a klien feszültség és hőmérséklet értékei az előző értéket veszik fel
       for(int j=LOCSOL_MEMORY-1;j>=0;j--){
         locsol[i].voltage[j]  = locsol[i].voltage[j-1];
@@ -506,15 +302,13 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
   Serial.print(F("Writing flash memory:"));                          //FLASH Memory save
   write_flash(&sensor,&locsolo[0]);
   if(day()!=sensor.thisday)  {
-                                  sensor.Max=-273;  sensor.Min=999;
-                                  sensor.avg_previous=sensor.avg_now/sensor.daily_avg_cnt; sensor.daily_avg_cnt=0;  sensor.avg_now=0;
-                                  for(int i=0;i<LOCSOLO_NUMBER;i++) {                                                                          //megallapitasa
-                                      locsol[i].temp_min=999;   //atlaggal helzetesiteni majd
-                                      locsol[i].temp_max=-273;  //atlaggal helyetesiteni majd
-                                      
-                                      }
-                                  sensor.thisday=day();
-                                  //Serial.print(F("   sensor.avg_previous:")); Serial.println(sensor.avg_previous); 2016.1.18 Delete if OK!
+    sensor.Max=-273;  sensor.Min=999;
+    sensor.avg_previous=sensor.avg_now/sensor.daily_avg_cnt; sensor.daily_avg_cnt=0;  sensor.avg_now=0;
+    for(int i=0;i<LOCSOLO_NUMBER;i++) {                                                                          //megallapitasa
+      locsol[i].temp_min=999;   //atlaggal helzetesiteni majd
+      locsol[i].temp_max=-273;  //atlaggal helyetesiteni majd
+    }
+    sensor.thisday=day();
   }
   if(hour()==11 && minute()<5             ) {sensor.avg_nr=1; sensor.avg_3h_temp=sensor.temperature_avg;}              //kiszámolom a 11 óra,13 óra és 15 óra körül mért hőmérséklet átlagát.
   if(hour()==13 && minute()<5 && sensor.avg_nr==1) {sensor.avg_nr++; sensor.avg_3h_temp+=sensor.temperature_avg;}
@@ -566,78 +360,6 @@ void periodic_timer()                                                           
   timer_flag=1;                                                                           //Set flag, this flag executes some other function from main loop. 
 }                                                                                         //Its needed because interrupt function cannot be too long, it can cause wdt reset
 
-void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uint8_t number)  //Ha kapcsolodik a kliens ez a kĂłdsor fog lefutni
-{
-  for(int i=0;i<number;i++){
-    if (request->equals(locsol[i].Name))  {              //a kliens azonositja magát; locsolo1,locsolo2,locsolo3?
-      printstatus1(locsol,i);                           //a soros porton kiírom ki csatlakozott
-      Serial.println("1");
-      //delay(10);
-      if(client->connected())   client->print(locsol[i].Name);                    //a kliensnek visszaküldöm a nevét, majd az egyenlőségjel után kiküldöm milyen állapotban kell lennie
-      if(client->connected())   client->println("=");
-      Serial.println("2");
-      //delay(10);
-      if(client->connected())   client->println(locsol[i].set);
-      //delay(10);
-      Serial.println("3");
-      *request = client->readStringUntil('\r');        //a kliens visszaküldi milyen állapotban van
-      Serial.println("4");
-      if(*request==0) {locsol[i].temp[locsol[i].count];  return;}
-      locsol[i].state=request->toInt();
-      locsol[i].state--;
-      *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért feszültséget
-      Serial.println("5");
-      if(*request==0) {Serial.println("Connection error");  return;}
-      delay(1);
-      locsol[i].voltage[0]=request->toInt();
-      *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért hőmérsékletet
-      Serial.println("6");
-      if(*request==0) {Serial.println("Connection error");  return;}
-      delay(1);
-      locsol[i].temp[0]=request->toFloat()*10;
-      *request = client->readStringUntil('\r');        //a kliens visszaküldi a mért páratartalmat
-      if(*request==0) {Serial.println("Connection error");  return;}
-      delay(1);
-      locsol[i].humidity=request->toInt();
-      
-      //if(locsol[i].count>LOCSOL_MEMORY) locsol[i].count=0;  //delete line if OK
-      printstatus2(locsol,i);                           //a soros portra kiírom milyen állapotban van a kliens
-      if(now()> 946684800) locsol[i].login_epoch=now();                           //mentem a csatlakozási időadatokat
-      locsol[i].timeout=0;                              //ha sokaig nincs csatlakozott kliens a timeout jelez 1-es értékkel
-      if(client->connected())   client->stop();
-      if(now()> 946684800 && locsol[i].auto_flag==1) {
-        locsol[i].watering_epoch=now();
-        locsol[i].auto_flag=0;
-//      write_flash(&sensor,&locsolo[0]);
-        }
-    }
-  }
-}
-
-struct Locsolo printstatus1(struct Locsolo *locsol,uint8_t i)
-{
-  Serial.print(F("ESP8266_server reports "));
-  Serial.print(locsol[i].Name);
-  Serial.println(F(" is connected."));
-  Serial.print(F("ESP8266_server reports "));
-  Serial.print(locsol[i].Name);
-  Serial.print(F("_set="));
-  Serial.print(locsol[i].set);
-}
-void printstatus2(struct Locsolo *locsol,uint8_t i)
-{
-  Serial.print(F("ESP8266_server reports")); 
-  Serial.print(locsol[i].Name);
-  Serial.print(F("_status="));
-  Serial.println(locsol[i].state);
-  Serial.print(F("Voltage: "));
-  Serial.println(locsol[i].voltage[locsol[i].count]);
-  Serial.print(F("Temperature: "));
-  Serial.println(locsol[i].temp[locsol[i].count]);
-  Serial.print(F("Humidity: "));
-  Serial.println(locsol[i].humidity);
-}
-
 void load_default(struct Locsolo *locsol,uint8_t number)
 {
  for(int i=0;i<number;i++){
@@ -688,17 +410,7 @@ void load_default(struct Locsolo *locsol,uint8_t number)
  sensor.thisday=0;
  sensor.wifi_reset=0;
 }
-void time_out(struct Locsolo *locsol, uint8_t number)
-{
-  for(int i=0;i<number;i++){
-    if(now()-locsol[i].login_epoch>LOGIN_TIME_OUT)
-    {
-    locsol[i].timeout=1;
-    Serial.print(locsol[i].Name);
-    Serial.println(F(" time out"));
-    }
-  }
- }
+
 void reset_cmd()
 {
   Serial.println(F("---------reset command---------")); delay(100);
@@ -747,7 +459,7 @@ void Telnet_print(uint8_t n,...)
 void read_flash(Sensor *sens, struct Locsolo *locsol){
   #if ENABLE_FLASH
     ETS_UART_INTR_DISABLE();
-    if(sizeof(locsol)>4096){
+    if(sizeof(locsol[0])>4096){
       spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],4096);
       spi_flash_read(mem_sector1,(uint32_t *)(&locsol[0]+4096),LOCSOLO_NUMBER*sizeof(locsol[0])-4096);
     }else
@@ -755,21 +467,20 @@ void read_flash(Sensor *sens, struct Locsolo *locsol){
       spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
       } 
     delay(10);
-    if(sizeof(sens)>4096){
-      spi_flash_read(mem_sector2,(uint32_t *)&sens,4096);
-      spi_flash_read(mem_sector3,(uint32_t *)(&sens+4096),sizeof(sens)-4096);
+    if(sizeof(*sens)>4096){
+      spi_flash_read(mem_sector2,(uint32_t *)sens,4096);
+      spi_flash_read(mem_sector3,(uint32_t *)(sens+4096),sizeof(*sens)-4096);
     }else
       {
-      spi_flash_read(mem_sector2,(uint32_t *)&sens,sizeof(sens));
+      spi_flash_read(mem_sector2,(uint32_t *)sens,sizeof(*sens));
       }                                                                             
     ETS_UART_INTR_ENABLE();
   #endif
 }
-
 void write_flash(Sensor *sens, struct Locsolo *locsol){
   #if ENABLE_FLASH
     ETS_UART_INTR_DISABLE();
-    if(sizeof(locsol)>4096){
+    if(sizeof(locsol[0])>4096){
       spi_flash_erase_sector(mem_sector0>>12);
       spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],4096);
       spi_flash_erase_sector(mem_sector1>>12);
@@ -779,106 +490,54 @@ void write_flash(Sensor *sens, struct Locsolo *locsol){
       spi_flash_erase_sector(mem_sector0>>12);
       spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
       }
-      if(sizeof(sens)>4096){
+      if(sizeof(*sens)>4096){
         spi_flash_erase_sector(mem_sector2>>12);
-        spi_flash_write(mem_sector2,(uint32_t *)&sens,4096);
+        spi_flash_write(mem_sector2,(uint32_t *)sens,4096);
         spi_flash_erase_sector(mem_sector3>>12);
-        spi_flash_write(mem_sector3,(uint32_t *)(&sens+4096),sizeof(sens)-4096);
+        spi_flash_write(mem_sector3,(uint32_t *)(sens+4096),sizeof(*sens)-4096);
       }else
         {
         spi_flash_erase_sector(mem_sector2>>12);
-        spi_flash_write(mem_sector2,(uint32_t *)&sens,sizeof(sens));
+        spi_flash_write(mem_sector2,(uint32_t *)sens,sizeof(*sens));
         }
       ETS_UART_INTR_ENABLE();  
   #endif
 }
-// send an NTP request to the time server at the given address
-unsigned long sendNTPpacket(IPAddress& address)
-{
-  Serial.println(F("sending NTP packet..."));
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
 
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  udp.beginPacket(address, 123); //NTP requests are to port 123
-  udp.write(packetBuffer, NTP_PACKET_SIZE);
-  udp.endPacket();
+void ota_arduino_ide(){
+  #if OTA_ARDUINO_IDE  
+    ArduinoOTA.onStart([]() {
+      Serial.println("Start");
+    });
+    ArduinoOTA.onEnd([]() {
+      Serial.println("End");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+      else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    });
+    ArduinoOTA.begin();
+  #endif
 }
 
-time_t getTime()
-{
-  sendNTPpacket(timeServer); // send an NTP packet to a time server
-  // wait to see if a reply is available
-  delay(1000);
-  
-  int cb = udp.parsePacket();
-  if (!cb) {
-    Serial.println(F("no packet yet"));
-  }
-  else {
-    Serial.print(F("packet received, length="));
-    Serial.println(cb);
-    // We've received a packet, read the data from it
-    udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-
-    //the timestamp starts at byte 40 of the received packet and is four bytes,
-    // or two words, long. First, esxtract the two words:
-
-    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
-    unsigned long secsSince1900 = highWord << 16 | lowWord;
-    Serial.print(F("Seconds since Jan 1 1900 = "));
-    Serial.println(secsSince1900);
-
-    // now convert NTP time into everyday time:
-    Serial.print(F("Unix time = "));
-    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-    const unsigned long seventyYears = 2208988800UL;
-    // subtract seventy years:
-    if(flag==1) {Serial.println(F("DEBUG now()")); epoch_previous=now();}
-    Serial.print(F("DEBUG, epoch_previous:")); Serial.println(epoch_previous);
-    unsigned long epoch = secsSince1900 - seventyYears;
-    if(epoch < 946684800)  epoch=epoch_previous;
-    // print Unix time:
-    Serial.println(epoch);
-
-    // print the hour, minute and second:
-    Serial.print(F("The UTC time is "));       // UTC is the time at Greenwich Meridian (GMT)
-    Serial.print((epoch  % 86400L) / 3600); // print the hour (86400 equals secs per day)
-    Serial.print(':');
-    if ( ((epoch % 3600) / 60) < 10 ) {
-      // In the first 10 minutes of each hour, we'll want a leading '0'
-      Serial.print('0');
-    }
-    Serial.print((epoch  % 3600) / 60); // print the minute (3600 equals secs per minute)
-    Serial.print(':');
-    if ( (epoch % 60) < 10 ) {
-      // In the first 10 seconds of each minute, we'll want a leading '0'
-      Serial.print('0');
-    }
-    Serial.println(epoch % 60); // print the second
-    
-    if(month()>10 || month()<4)   epoch = secsSince1900 - seventyYears + TIME_ZONE * SECS_PER_HOUR;   //Convert to time zone and daylight saving
-    else                          epoch = secsSince1900 - seventyYears + (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;   //Convert to time zone
-    Serial.println("return epoch");
-    return epoch;
-  }
+inline void ota_web_browser(){
+  #if OTA_WEB_BROWSER
+    httpUpdater.setup(&httpServer);
+    httpServer.begin();
+  #endif
 }
 
-
-
+inline void telnet_debug(){
+  #if TELNET_DEBUG  
+    TelnetDebug.begin();
+    TelnetDebug.setNoDelay(true);
+  #endif
+}
 
