@@ -1,6 +1,6 @@
 #include "HTMLpage.h"
 
-void html_index(WiFiClient *client,struct Locsolo *locsol)
+void html_index(struct Locsolo *locsol)
 {
   uint16_t i,r,t;
   t=millis();
@@ -173,9 +173,9 @@ s+=F("</p><br></body>\n"
     "if(locsolok[i].auto) {\n"
       "html += '<span class=\"label label-info\">AUTO ON</span>';\n"
     "}\n");
-  client->println(s);
+  //client->println(s);
   Serial.println("p:10");    
-  s=F(    
+  s+=F(    
     "html +='</font>&emsp;<a href=\"/locs' + locsolok[i].id + '=on\"class=\"btn btn-success navbar-btn\">On</a>';\n"
     "html +='&nbsp;<a href=\"/locs' + locsolok[i].id + '=off\"class=\"btn btn-danger navbar-btn\">Off</a>';\n"
     "html +='&nbsp;<a href=\"/locs' + locsolok[i].id + '=auto\"class=\"btn btn-warning navbar-btn\">Auto</a><br><font title=\"min: ' + locsolok[i].min + ' max: ' + locsolok[i].max + '\" size=\"2\">Voltage: ';\n"
@@ -209,28 +209,28 @@ s+=F("</p><br></body>\n"
        for (i=0; i < sensor.count; i++)                      //sends the saved epoch data to HTML page graphs
          {            
          s += sensor.epoch_saved_dt[i]; s += ",";
-         if(s.length()>2900) {client->print(s); s.remove(0);}
+         //if(s.length()>2900) {client->print(s); s.remove(0);}
          }
        s+=F("];\n var temperature=[");
-        if(sensor.temperature_graph) send_data_temperature(sensor.temperature_saved,&sensor.count,&sensor.count,client,&s);
+        if(sensor.temperature_graph) send_data_temperature(sensor.temperature_saved,&sensor.count,&sensor.count,&s);
        s+=F("];\n var humidity=[");
        delay(100);
        Serial.println("p:11");
-        if(sensor.humidity_graph)  send_data_humidity(sensor.humidity_saved,&sensor.count,client,&s);
+        if(sensor.humidity_graph)  send_data_humidity(sensor.humidity_saved,&sensor.count,&s);
       for(i=0;i<LOCSOLO_NUMBER;i++)
        { 
        s +=F("];\nvar "); s+=locsolo[i].Name; s+=F("_temp=[");
-        if(locsolo[i].temperature_graph) send_data_temperature(locsol[i].temp,&locsol[i].count,&sensor.count,client,&s);
+        if(locsolo[i].temperature_graph) send_data_temperature(locsol[i].temp,&locsol[i].count,&sensor.count,&s);
 //      s += "];\n"; //remove if OK var ";
 //       s+=locsolo[i].Name; s+="_alias1=\""; s += locsolo[i].alias1; s+="\";\n var ";  //remove if OK
 //       s+=locsolo[i].Name; s+="_alias2=\""; s += locsolo[i].alias2;                   //remove if OK
        s+=F("];\nvar "); s+=locsolo[i].Name; s+=F("_voltage=[");
-        if(locsolo[i].voltage_graph) send_data_voltage(locsol[i].voltage,&locsol[i].count,&sensor.count,client,&s);
+        if(locsolo[i].voltage_graph) send_data_voltage(locsol[i].voltage,&locsol[i].count,&sensor.count,&s);
        }
        s +=F("];\n");
-        client->println(s);
+        //client->println(s);
         Serial.println("p:12");
- s  =F("var sum=0; for (var i=0; i<epoch_dt.length; i++) {sum+=epoch_dt[i];};"
+ s+=F("var sum=0; for (var i=0; i<epoch_dt.length; i++) {sum+=epoch_dt[i];};"
        "var t=epoch-sum;"
        "for (var i=0; i<temperature.length; i++) {\n"
        "t=t+epoch_dt[epoch_dt.length-i-1];"
@@ -335,9 +335,9 @@ s+=F("</p><br></body>\n"
         "\"negativeLineColor\": \"#637bb6\","
         "\"type\": \"smoothedLine\","
         "\"title\": \""); s+=locsolo[1].alias;  s+=F(" volt.");
-  client->print(s);
+  //client->print(s);
   Serial.println("p:15");
-     s=F("\",\"valueField\": \"locs2_voltage\""
+     s+=F("\",\"valueField\": \"locs2_voltage\""
  #endif
 #if LOCSOLO_NUMBER > 2
     "},\n{"
@@ -407,12 +407,12 @@ s+=F("</p><br></body>\n"
        ""
        "<a href=\"/settings\" target=\"_blank\">settings</a> "
        "</html>");
-  client->println(s);
+  server.send ( 200, "text/html", s );
   t=millis()-t;
   Serial.println(t);
  }
 
-void status_respond(WiFiClient *client,struct Locsolo *locsol,uint8_t n)
+void status_respond(struct Locsolo *locsol,uint8_t n)
 {
   String s=F("var locsolok = [");
  for(int i;i<n;i++){    
@@ -439,12 +439,13 @@ void status_respond(WiFiClient *client,struct Locsolo *locsol,uint8_t n)
    s+=F("},");
   }
   s+=F("]");
-  client->println(s);
+  server.send ( 200, "text/plain", s );
+  //client->println(s);
   yield();
   }
   
 #if  ENABLE_IP
-  void who_is_connected_HTML(struct Adress *adr, WiFiClient *client)
+  void who_is_connected_HTML(struct Adress *adr)
   {
     //Serial.println("html /who page");
     String s=F("<!doctype html>"
@@ -467,12 +468,13 @@ void status_respond(WiFiClient *client,struct Locsolo *locsol,uint8_t n)
               }
               s+=F("</body>"
                   "</html>");
-              client->println(s);
+              server.send ( 200, "text/html", s );
+              //client->println(s);
               yield();
   }
 #endif
 
-void html_settings(WiFiClient *client)
+void html_settings()
 {
   String s;
   s=F("<!doctype html>"
@@ -499,7 +501,7 @@ void html_settings(WiFiClient *client)
     }
       s+=F("<input type=\"submit\" value=\"Submit\">");
       s+=F("</form>");
-      client->println(s);
+      //client->println(s);
     s=F("<br><br><br><br>");
     /*  for(int i;i<LOCSOLO_NUMBER;i++){
         s+="<b>"; s+=locsolo[i].Name; s+="</b><br>";
@@ -519,47 +521,48 @@ void html_settings(WiFiClient *client)
           "});"
           "$.get('/S:' + r);})"
       "</script>");
-  client->println(s);
+      server.send ( 200, "text/html", s );
+  //client->println(s);
 }
 
-void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_){
+void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,String *s_){
   if(*sensor_count>*count) {                                     //Ez azert van, mert ha az ext. sensorok adataibol kevesebbet jegyez meg a program,
           for(int j=0;j<((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
             *s_+="0"; *s_+=",";                                         //tomb azonos meretu legyen
-            if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
+            //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
           }
          }
   for (int i=0; i < *count; i++)
          {
          *s_ += String((float)data[i]/10,2);
          *s_ += ",";
-         if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
+         //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
          }
 }
-void send_data_humidity(uint8_t *data,uint16_t *count,WiFiClient *client,String *s_){
+void send_data_humidity(uint8_t *data,uint16_t *count,String *s_){
   for (int i=0; i < *count; i++)
          {
          *s_ += data[i];
          *s_ += ",";
-         if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
+         //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
          }
 }
-void send_data_voltage(uint16_t *data,uint16_t *count,uint16_t *sensor_count,WiFiClient *client,String *s_){
+void send_data_voltage(uint16_t *data,uint16_t *count,uint16_t *sensor_count,String *s_){
    if(*sensor_count>*count) {                                     //Ez azert van, mert ha az ext. sensorok adataibol kevesebbet jegyez meg a program,
           for(int j=0;j<((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
             *s_+="0"; *s_+=",";                                         //tomb azonos meretu legyen
-            if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
+            //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
           }
          }
   for (int i=0; i < *count; i++)
          {
          *s_ += String((float)data[i]/1000,3);
          *s_ += ",";
-         if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
+         //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
          }
 }
 
-void dht_status(WiFiClient *client)
+void dht_status()
 {
   String s;
   s="DHT\n";
@@ -569,5 +572,6 @@ void dht_status(WiFiClient *client)
     s+="\n";
     //s+="<br>";
   }
-  client->println(s);
+  server.send ( 200, "text/plain", s );
+  //client->println(s);
 }

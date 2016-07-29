@@ -36,10 +36,24 @@ void setup() {
     }
   }
   Serial.println(F("\nWiFi connected"));
-  ota_arduino_ide();  //átirni INLINE vagz makro kodra
+  ota_arduino_ide();
   ota_web_browser();
   telnet_debug();
-  server.begin();     // Start the server
+  server.on ( "/", index_handle );
+  server.on ( "/locs1=on", locs1_on );
+  server.on ( "/locs1=off", locs1_off );
+  server.on ( "/locs1=auto", locs1_auto );
+/*  server.on ( "/settings", settings );  
+  server.on ( "/S:", S );
+  server.on ( "/properties", properties );
+  server.on ( "/erase", erase );
+  server.on ( "/reset", reset );
+  server.on ( "/reset_reason", reset_reason );
+  server.on ( "/dht_status", dht_status_handle );*/
+  server.on ( "/status", stat );
+//  server.on ( "/who", who );
+  server.onNotFound ( not_found_handle );
+  server.begin();
   dht.begin();              // initialize temperature sensor
   udp.begin(localPort);     //NTP time port
   setSyncProvider(getTime);
@@ -57,7 +71,7 @@ void setup() {
 }
     
 void loop() { 
-  delay(20);
+  delay(50);
   #if OTA_ARDUINO_IDE
     ArduinoOTA.handle();
   #endif
@@ -67,8 +81,6 @@ void loop() {
   #if TELNET_DEBUG
     TelnetDebugHandle();          
   #endif      
-//  OTA_WEB_BROWSER_HANDLE
-//  TELNET_DEBUG_HANDLE
   timer1.update();
   if(timer_flag)
   {
@@ -76,7 +88,7 @@ void loop() {
     Serial.print(F("Locsolo.count:")); Serial.println(locsolo[0].count);
     Serial.print(F("Periodic Timer:"));  Serial.print(TIMER_PERIOD);  Serial.println(F("s"));
     time_out(&locsolo[0],LOCSOLO_NUMBER);
-    if(now()< 946684800) setTime(getTime());
+    if(now()< 946684800)  setTime(getTime());
     else {
       DHT_sensor_read(&locsolo[0],LOCSOLO_NUMBER);
       auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
@@ -90,133 +102,17 @@ void loop() {
     if(WiFi.status() != WL_CONNECTED) wifinc_count++;
     else {wifinc_count=0; Serial.print(F("wifinc_count=")); Serial.println(wifinc_count);}
     if(wifinc_count>5)  {Serial.println(F("No wifi connection")); sensor.wifi_reset++; reset_cmd();}
-    if (TelnetDebugClient.connected()) {String debug_str=F("Time:"); debug_str+=hour(); debug_str+=":"; debug_str+=minute(); debug_str+=":"; debug_str+=second();
+/*    if (TelnetDebugClient.connected()) {String debug_str=F("Time:"); debug_str+=hour(); debug_str+=":"; debug_str+=minute(); debug_str+=":"; debug_str+=second();
                                         debug_str+=F("   Heap size:"); debug_str+=ESP.getFreeHeap(); debug_str+=F(" wifi_reset="); debug_str+=sensor.wifi_reset; 
-                                        TelnetDebugClient.println(debug_str);}
+                                        TelnetDebugClient.println(debug_str);}*/
 //    if (TelnetDebugClient.connected())  Telnet_print("Time:*",hour());
     Serial.printf("heap size: %u\n", ESP.getFreeHeap());
     Serial.println(F("Periodic Timer end"));
     timer_flag=0;
   }
-  WiFiClient client;
-  client = server.available();
-  if (!client) {                //Ha nincs kliens csatlakozva
-   client.flush(); client.stop();
-   return;
-  }
-  Serial.println(F("p:2"));
-  while(!client.available())   {
-    Serial.print(F("."));    
-    delay(1);   
-    timeout++;
-    if(timeout>500) {Serial.println(F("INFINITE LOOP BREAK!"));  client.flush(); client.stop(); Serial.println(F("BREAK NOW!")); break;}
-    }
-    timeout=0;
-    String request = client.readStringUntil('\r');  // Read the first line of the request
-    Serial.println(request);
-    auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
-    client_login(&request,&locsolo[0],&client,LOCSOLO_NUMBER);
-    delay(100);
-    if (request.indexOf("/locs1=on") != -1)  {
-      locsolo[0].set = HIGH;
-      Serial.print(F("locsolo[0]="));
-      Serial.println(locsolo[0].set);
-      html_index(&client,&locsolo[0]);
-    }
-      else if (request.indexOf("/locs1=off") != -1)  {
-      locsolo[0].set = LOW;
-      Serial.print(F("locsolo[0]="));
-      Serial.println(locsolo[0].set);
-      html_index(&client,&locsolo[0]);
-    }
-     else if (request.indexOf("/locs1=auto") != -1)  {
-      if(locsolo[0].autom) locsolo[0].autom = 0;
-      else locsolo[0].autom = 1;
-      Serial.print(F("locsolo[0]="));
-      Serial.println(locsolo[0].autom);
-      html_index(&client,&locsolo[0]);
-    }
-      else if (request.indexOf("/settings") != -1)  {
-      Serial.print(F("Settings"));
-      html_settings(&client);
-    }
-    else if (request.indexOf("erase") != -1)  {
-      Serial.println(F("Load defaults"));
-      load_default(&locsolo[0],LOCSOLO_NUMBER);
-      html_index(&client,&locsolo[0]);
-    }
-    else if (request.indexOf("S:") != -1)  {                        //ha a settingsnel beallitok valamit
-      Serial.println(F("p:8"));
-      uint16_t response;
-      request.remove(0,request.indexOf("S:")+2);                                          //a formatum peldaul S:00000101
-      Serial.println(request);
-      response=request.toInt();
-      Serial.print(F("Settings response:")); Serial.println(response);
-      if(response & (1<<0)) sensor.temperature_graph=1;
-        else  sensor.temperature_graph=0;
-      if(response & (1<<1)) sensor.humidity_graph=1;
-        else  sensor.humidity_graph=0;
-      for(int i=0;i<LOCSOLO_NUMBER;i++){      
-        if(response & (1<<(2+(2*i)))) locsolo[i].temperature_graph=1;
-        else  locsolo[i].temperature_graph=0;
-        if(response & (1<<(3+(2*i)))) locsolo[i].voltage_graph=1;
-        else  locsolo[i].voltage_graph=0;
-        Serial.print(F("temperature_graph:"));Serial.print(locsolo[i].temperature_graph);
-        Serial.print(F("voltage_graph:"));Serial.println(locsolo[i].voltage_graph);
-      }
-      html_settings(&client);
-    }
-    else if (request.indexOf("properties") != -1)  {                        //peldaul dur:200 hour:8 min:15 dur:200 hour:8 min:15  --szimetrikus kovetkezo locsolohoz tartozik
-      Serial.println(F("p:20"));
-      uint16_t dur,hou,mi;
-      String r;
-      uint16_t w;
-      for(int i=0;i<LOCSOLO_NUMBER;i++){
-      request.remove(0,request.indexOf("=")+1);
-      r = request.substring(0,request.indexOf("&"));
-      r.toCharArray(locsolo[i].alias, r.length()+1); 
-     // Serial.print("alias1:"); Serial.println(r);
-
-      //Serial.print("alias1:"); Serial.println(te);
-      request.remove(0,request.indexOf("=")+1);
-      r=request.substring(0,request.indexOf("&")); w=r.toInt();
-      locsolo[i].auto_watering_time.hour=w;
-      //Serial.print("hour:"); Serial.println(w);
-      request.remove(0,request.indexOf("=")+1);
-      r=request.substring(0,request.indexOf("&")); w=r.toInt();
-      locsolo[i].auto_watering_time.minute=w;
-      //Serial.print("minute:"); Serial.println(w);
-      request.remove(0,request.indexOf("=")+1);
-      r=request.substring(0,request.indexOf("&")); w=r.toInt();
-      locsolo[i].duration=w*60;
-     // Serial.print("duration:"); Serial.println(w);
-      }
-      html_settings(&client);
-    }
-    else if (request.indexOf("/status") != -1)  {
-     Serial.println(F("p:7"));
-     status_respond(&client,&locsolo[0],LOCSOLO_NUMBER);
-    }
-      
-    else if (request.indexOf("/reset_reason") != -1) {Serial.println(ESP.getResetReason()); client.println(ESP.getResetReason());}
-    else if (request.indexOf("/dht_status") != -1) dht_status(&client);
-    else if (request.indexOf("/reset") != -1) reset_cmd();
-    else if (request.indexOf("/update") != -1) {}
-    #if  ENABLE_IP  
-      else if(request.indexOf("/who") != -1)  {
-      who_is_connected_HTML(&adress[0],&client);
-      }
-    #endif
-      else if(request.indexOf("GET / HTTP") != -1)  html_index(&client,&locsolo[0]);     // Return the response
-    #if  ENABLE_IP
-      request = client.readStringUntil('\r');  // Read the request
-      who_is_connected(&adress[0],&request);
-    #endif
-    client.flush();
-    delay(1);
-    client.stop();
-    Serial.println(F("p:5"));
-    Serial.println(F("Client disonnected\n"));
+  server.handleClient();
+//  auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
+//  client_login(&request,&locsolo[0],&client,LOCSOLO_NUMBER);
 }
  //----------------------------------- loop end------------------------------------------------
 #if  ENABLE_IP
@@ -416,7 +312,7 @@ void reset_cmd()
   Serial.println(F("---------reset command---------")); delay(100);
   ESP.restart();
 }
-
+/*
 void TelnetDebugHandle(){
   if (TelnetDebug.hasClient()){
     //find free/disconnected spot
@@ -429,11 +325,11 @@ void TelnetDebugHandle(){
         delay(500);
       }
     //no free/disconnected spot so reject
-    WiFiClient serverClient = server.available();
-    serverClient.stop();
+   // WiFiClient serverClient = server.available();
+    //serverClient.stop();
   }
   if(!TelnetDebugClient.connected()) TelnetDebugClient.stop();
-}
+}*/
 /*********DEBUG via TELNET***********************************************************************
  * 
  * 

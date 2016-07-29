@@ -18,6 +18,7 @@ extern "C" {
 #include "HTMLpage.h"
 #include "NTP_Time.h"
 #include "client.h"
+#include "server_response.h"
 
 #define TIMER_PERIOD 60             //Ilyen gyakran mérek hőmérsékletet, légnyomást esetleg egyéb dolgot
 #define DHT_AVARAGE 10              //Ennyi hőmérsékeltmérésből mérek átlagot
@@ -38,9 +39,9 @@ extern "C" {
 #define ENABLE_IP 0                 //Bekapcsolja a legutóbbi 10 csatlakozott eszköz IP címének megjegyzését és kijelzését
 #define IP_TIMEOUT  3600            //ha ugyanarrola az IPről jelentkezek be ennyi másodpercnek kell eltelnie hogy megjegyezze
 #define OTA_ARDUINO_IDE 1           //OTA via Arduino
-#define OTA_WEB_BROWSER 1           //OTA via Web Browser
+#define OTA_WEB_BROWSER 0           //OTA via Web Browser
 #define ENABLE_FLASH 1
-#define TELNET_DEBUG 1
+#define TELNET_DEBUG 0
 //-------Flash memory map
 #define mem_sector0             0x7b000
 #define mem_sector1             0x7c000
@@ -137,7 +138,8 @@ Timer timer1;
 const char* ssid = "wifi";
 const char* password = "";
  
-WiFiServer server(80);
+//WiFiServer server(80);
+ESP8266WebServer server ( 80 );
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
