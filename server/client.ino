@@ -1,8 +1,31 @@
 #include "server.h"
 #include "client.h"
 
-void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uint8_t number)  //Ha kapcsolodik a kliens ez a kĂłdsor fog lefutni
+void client_handle()  //Ha kapcsolodik a kliens ez a kódsor fog lefutni
 {
+  String s;
+  locsolo[(server.arg(0)).toInt()].temp[0]    = (server.arg(1)).toInt();
+  locsolo[(server.arg(0)).toInt()].humidity   = (server.arg(2)).toInt();
+  locsolo[(server.arg(0)).toInt()].voltage[0] = (server.arg(3)).toInt();
+
+  delay(50);
+  s="state:" + String(locsolo[(server.arg(0)).toInt()].set) + " duration="  + String(locsolo[(server.arg(0)).toInt()].duration) + "_";
+  server.send( 200, "text/plain", s );
+  //server.close();
+  locsolo[(server.arg(0)).toInt()].state=locsolo[(server.arg(0)).toInt()].set;
+  
+  if(now()> 946684800) locsolo[(server.arg(0)).toInt()].login_epoch=now();                           //mentem a csatlakozási időadatokat
+  locsolo[(server.arg(0)).toInt()].timeout=0;
+    if(now()> 946684800 && locsolo[(server.arg(0)).toInt()].auto_flag==1) {
+    locsolo[(server.arg(0)).toInt()].watering_epoch=now();
+    locsolo[(server.arg(0)).toInt()].auto_flag=0;
+//  write_flash(&sensor,&locsolo[0]);
+  }
+}
+/*
+  http.begin(server.arg( 1 ));
+  
+  server.send(locsol[server.arg( 0 )].set;
   for(int i=0;i<number;i++){
     if (request->equals(locsol[i].Name))  {              //a kliens azonositja magát; locsolo1,locsolo2,locsolo3?
       printstatus1(locsol,i);                           //a soros porton kiírom ki csatlakozott
@@ -46,7 +69,7 @@ void client_login(String *request,struct Locsolo *locsol, WiFiClient *client,uin
     }
   }
 }
-
+*/
 struct Locsolo printstatus1(struct Locsolo *locsol,uint8_t i)
 {
   Serial.print(F("ESP8266_server reports "));

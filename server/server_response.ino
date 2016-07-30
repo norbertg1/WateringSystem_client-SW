@@ -33,53 +33,22 @@ void settings(){
 }
 
 void S(){
-  Serial.println(F("p:8"));
-      uint16_t response;
-      //request.remove(0,request.indexOf("S:")+2);                                          //a formatum peldaul S:00000101
-      //Serial.println(request);
-      //response=request.toInt();
-      Serial.print(F("Settings response:")); Serial.println(response);
-      if(response & (1<<0)) sensor.temperature_graph=1;
-        else  sensor.temperature_graph=0;
-      if(response & (1<<1)) sensor.humidity_graph=1;
-        else  sensor.humidity_graph=0;
-      for(int i=0;i<LOCSOLO_NUMBER;i++){      
-        if(response & (1<<(2+(2*i)))) locsolo[i].temperature_graph=1;
-        else  locsolo[i].temperature_graph=0;
-        if(response & (1<<(3+(2*i)))) locsolo[i].voltage_graph=1;
-        else  locsolo[i].voltage_graph=0;
-        Serial.print(F("temperature_graph:"));Serial.print(locsolo[i].temperature_graph);
-        Serial.print(F("voltage_graph:"));Serial.println(locsolo[i].voltage_graph);
-      }
-      html_settings();
+  sensor.temperature_graph  = (server.arg ( 0 )).toInt();
+  sensor.humidity_graph     = (server.arg ( 1 )).toInt();
+  for(int i=0;i<LOCSOLO_NUMBER;i++){
+    locsolo[i].temperature_graph  = (server.arg ( i * 2 + 1 + 2 )).toInt();
+    locsolo[i].voltage_graph      = (server.arg ( i * 2 + 2 + 2 )).toInt();
+  }
 }
 
 void properties(){
-/*  Serial.println(F("p:20"));
-      uint16_t dur,hou,mi;
-      String r;
-      uint16_t w;
-      for(int i=0;i<LOCSOLO_NUMBER;i++){
-      //request.remove(0,request.indexOf("=")+1);
-      //r = request.substring(0,request.indexOf("&"));
-      r.toCharArray(locsolo[i].alias, r.length()+1); 
-     // Serial.print("alias1:"); Serial.println(r);
-
-      //Serial.print("alias1:"); Serial.println(te);
-      //request.remove(0,request.indexOf("=")+1);
-      //r=request.substring(0,request.indexOf("&")); w=r.toInt();
-      locsolo[i].auto_watering_time.hour=w;
-      //Serial.print("hour:"); Serial.println(w);
-      request.remove(0,request.indexOf("=")+1);
-      r=request.substring(0,request.indexOf("&")); w=r.toInt();
-      locsolo[i].auto_watering_time.minute=w;
-      //Serial.print("minute:"); Serial.println(w);
-      request.remove(0,request.indexOf("=")+1);
-      r=request.substring(0,request.indexOf("&")); w=r.toInt();
-      locsolo[i].duration=w*60;
-     // Serial.print("duration:"); Serial.println(w);
+    for(int i=0;i<LOCSOLO_NUMBER;i++){
+        (server.arg ( i * 4 + 0 )).toCharArray(locsolo[i].alias, (server.arg ( i * 4 + 0 )).length()+1);
+        locsolo[i].auto_watering_time.hour=(server.arg ( i * 4 + 1 )).toInt();
+        locsolo[i].auto_watering_time.minute=(server.arg ( i * 4 + 2 )).toInt();
+        locsolo[i].duration=(server.arg ( i * 4 + 3 )).toInt() * 60;
       }
-      html_settings();*/
+    html_settings();
 }
 
 void stat(){
@@ -89,8 +58,8 @@ void stat(){
 
 void erase(){
    Serial.println(F("Load defaults"));
-      load_default(&locsolo[0],LOCSOLO_NUMBER);
-      html_index(&locsolo[0]);
+   load_default(&locsolo[0],LOCSOLO_NUMBER);
+   html_index(&locsolo[0]);
 }
 
 void reset(){
@@ -98,16 +67,18 @@ void reset(){
 }
 
 void reset_reason(){
-  //Serial.println(ESP.getResetReason()); client.println(ESP.getResetReason());
+  Serial.println(ESP.getResetReason()); 
+  server.send ( 200, "text/plain", ESP.getResetReason());
 }
 
 void dht_status_handle(){
-  //dht_status(&client);
+  dht_status();
 }
-
-void who(){
-  //who_is_connected_HTML(&adress[0],&client);
-}
+#if  ENABLE_IP
+  void who(){
+    who_is_connected_HTML(&adress[0]);
+  }
+#endif
 
 void not_found_handle(){
   String message = "File Not Found\n\n";

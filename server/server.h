@@ -39,7 +39,7 @@ extern "C" {
 #define ENABLE_IP 0                 //Bekapcsolja a legutóbbi 10 csatlakozott eszköz IP címének megjegyzését és kijelzését
 #define IP_TIMEOUT  3600            //ha ugyanarrola az IPről jelentkezek be ennyi másodpercnek kell eltelnie hogy megjegyezze
 #define OTA_ARDUINO_IDE 1           //OTA via Arduino
-#define OTA_WEB_BROWSER 0           //OTA via Web Browser
+#define OTA_WEB_BROWSER 1           //OTA via Web Browser
 #define ENABLE_FLASH 1
 #define TELNET_DEBUG 0
 //-------Flash memory map
@@ -166,7 +166,7 @@ inline void telnet_debug();
 #endif
 
 #if OTA_WEB_BROWSER
-  ESP8266WebServer httpServer(8266);
+//  ESP8266WebServer httpServer(8266);  //delete if OK 2016.7.29
   ESP8266HTTPUpdateServer httpUpdater;
 #endif
 

@@ -502,7 +502,7 @@ void html_settings()
       s+=F("<input type=\"submit\" value=\"Submit\">");
       s+=F("</form>");
       //client->println(s);
-    s=F("<br><br><br><br>");
+    s+=F("<br><br><br><br>");
     /*  for(int i;i<LOCSOLO_NUMBER;i++){
         s+="<b>"; s+=locsolo[i].Name; s+="</b><br>";
         s+="öntözési időpont: "; s+=locsolo[i].auto_watering_time.hour; locsolo[i].auto_watering_time.minute < 10 ? s += ":0" : s += ":"; s+=locsolo[i].auto_watering_time.minute;
@@ -515,11 +515,11 @@ void html_settings()
     "<script src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js\"></script><script>"
       "var $gomb = $('#ok');"
       "$gomb.click(function() {"
-         "var r = 0;"
+         "var r = 'q=';"
          "$('input[type=checkbox]').each(function(i, checkbox) {"
-          "r += checkbox.checked ? Math.pow(2, i) : 0;"
+          "r += checkbox.checked ? 1 : 0; r+='&q='"
           "});"
-          "$.get('/S:' + r);})"
+          "$.get('/S?' + r);})"
       "</script>");
       server.send ( 200, "text/html", s );
   //client->println(s);
@@ -573,5 +573,4 @@ void dht_status()
     //s+="<br>";
   }
   server.send ( 200, "text/plain", s );
-  //client->println(s);
 }

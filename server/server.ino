@@ -3,9 +3,12 @@
  *
  *
  *
- *
- *
- *
+ *  TODO list (és ötletek): - szerver klien komminukációs csatornáját jelszóval védetté tenni
+ *                          - /settings oldalat szebbé tenni
+ *                          - /settings oldalra rakni egy kapcsolót ahol ki lehet választani a locsolok számát
+ *                          
+ *                          
+ *                          
  *  Update on adress: locsolo.dynamic-dns.net:8266/update
  *
  *Created by Gál Norbert
@@ -43,14 +46,15 @@ void setup() {
   server.on ( "/locs1=on", locs1_on );
   server.on ( "/locs1=off", locs1_off );
   server.on ( "/locs1=auto", locs1_auto );
-/*  server.on ( "/settings", settings );  
-  server.on ( "/S:", S );
+  server.on ( "/settings", settings );  
+  server.on ( "/S", S );
   server.on ( "/properties", properties );
   server.on ( "/erase", erase );
   server.on ( "/reset", reset );
   server.on ( "/reset_reason", reset_reason );
-  server.on ( "/dht_status", dht_status_handle );*/
+  server.on ( "/dht_status", dht_status_handle );
   server.on ( "/status", stat );
+  server.on ( "/client", client_handle );
 //  server.on ( "/who", who );
   server.onNotFound ( not_found_handle );
   server.begin();
@@ -75,9 +79,6 @@ void loop() {
   #if OTA_ARDUINO_IDE
     ArduinoOTA.handle();
   #endif
-  #if OTA_WEB_BROWSER            
-    httpServer.handleClient();   
-  #endif  
   #if TELNET_DEBUG
     TelnetDebugHandle();          
   #endif      
@@ -111,8 +112,7 @@ void loop() {
     timer_flag=0;
   }
   server.handleClient();
-//  auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
-//  client_login(&request,&locsolo[0],&client,LOCSOLO_NUMBER);
+  auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
 }
  //----------------------------------- loop end------------------------------------------------
 #if  ENABLE_IP
@@ -425,8 +425,8 @@ void ota_arduino_ide(){
 
 inline void ota_web_browser(){
   #if OTA_WEB_BROWSER
-    httpUpdater.setup(&httpServer);
-    httpServer.begin();
+    httpUpdater.setup(&server);
+    //httpServer.begin();       delete if OK 2016.7.29
   #endif
 }
 
