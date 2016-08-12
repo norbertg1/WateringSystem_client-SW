@@ -6,10 +6,13 @@
  *  TODO list (és ötletek): - szerver klien komminukációs csatornáját jelszóval védetté tenni
  *                          - /settings oldalat szebbé tenni
  *                          - /settings oldalra rakni egy kapcsolót ahol ki lehet választani a locsolok számát
+ *                          - mDNS hasznalata a wifimanager oldalon is
  *                          
  *                          
- *                          
- *  Update on adress: locsolo.dynamic-dns.net:8266/update
+ *  Reachable on local adress:                         
+ *  Update on adress:           locsol.dynamic-dns.net/update
+ *        or locally:
+ *  
  *
  *Created by Gál Norbert
  *  2015.8 - 2016.7
@@ -26,19 +29,15 @@ void setup() {
   Serial.print("locsolo_cim: "); Serial.println((uint32_t)((uint32_t *)&locsolo[0]));
   Serial.print("sens_cim: "); Serial.println((uint32_t)((uint32_t *)&sensor));
   read_flash(&sensor,&locsolo[0]);
-  Serial.print(F("Connecting to "));  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  uint8_t count=0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    count++;
-    if(count>100) {
-      delay(1000);
-      ESP.restart();
-    }
+  WiFiManager wifiManager;
+  wifiManager.setTimeout(SLEEP_TIME_ACESS_POINT);
+  if(!wifiManager.autoConnect("Watering_server")) {
+    Serial.println("failed to connect and hit timeout");
+    ESP.deepSleep(SLEEP_TIME_NO_WIFI,WAKE_RF_DEFAULT);
+    delay(100);
   }
-  Serial.println(F("\nWiFi connected"));
+  
+//  WiFi.softAP("ESP_AP");
   ota_arduino_ide();
   ota_web_browser();
   telnet_debug();
@@ -58,6 +57,9 @@ void setup() {
 //  server.on ( "/who", who );
   server.onNotFound ( not_found_handle );
   server.begin();
+  MDNS.begin(host);
+  MDNS.addService("http", "tcp", 80);
+  MDNS.addService("watering_server", "tcp", 8080);
   dht.begin();              // initialize temperature sensor
   udp.begin(localPort);     //NTP time port
   setSyncProvider(getTime);
@@ -73,9 +75,15 @@ void setup() {
   if(sensor.count>=SENSOR_MEMORY)  sensor.count=0;
   if(locsolo[0].count>=LOCSOL_MEMORY) locsolo[0].count=0;
 }
-    
+   
 void loop() { 
+  static int heap=0;
   delay(50);
+  heap++;
+  if(heap%100 == 0){
+      Serial.print(F("heap size: "));  Serial.println(ESP.getFreeHeap());
+      heap=0;
+  }
   #if OTA_ARDUINO_IDE
     ArduinoOTA.handle();
   #endif
@@ -169,7 +177,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     sensor.count_dht=0;
     sensor.daily_avg_cnt++;                                                //Napi átlaghőmérséklethez kell
     if(sensor.count<(SENSOR_MEMORY-1))  sensor.count++;                    //Ha még nem értem el a ESP8266 memória végét
-    if((now() - sensor.epoch_now) > 65535) load_default(&locsolo[0],LOCSOLO_NUMBER);   //Ha 2^16 = 65535 ~ 18,2 oratol több idő telt el túlcsordulás történik és jobb ha resetelve van minden, a későbbiekben talán jobb nem lenullázni mindent pl. beállítások
+    if((now() - sensor.epoch_now) > 65535 && now()> 946684800) load_default(&locsolo[0],LOCSOLO_NUMBER);   //Ha 2^16 = 65535 ~ 18,2 oratol több idő telt el túlcsordulás történik és jobb ha resetelve van minden, a későbbiekben talán jobb nem lenullázni mindent pl. beállítások
     for(int i=SENSOR_MEMORY-1;i>0;i--) {                          //Ha már elértem fogom a hőmérsékleti változókat és egyel odébb dobok mindent úgy hogy az
       sensor.temperature_saved[i] = sensor.temperature_saved[i-1];    //az legkésőbbi érték elveszik
       sensor.humidity_saved[i]    = sensor.humidity_saved[i-1];
@@ -218,7 +226,7 @@ void water_points(struct Locsolo *locsol)
     Serial.println(sensor.avg_3h);
     uint8_t flag=0;
     for(int i=0;i<LOCSOLO_NUMBER;i++) if(locsol[i].autom == 1) {flag=1; break;}
-    if(flag==1)
+    if(flag==1 && sensor.water_points>7)
     {
     if(sensor.avg_3h<15)                      sensor.water_points_increase=1;
     if(15<sensor.avg_3h && sensor.avg_3h<20)  sensor.water_points_increase=2;
@@ -426,7 +434,6 @@ void ota_arduino_ide(){
 inline void ota_web_browser(){
   #if OTA_WEB_BROWSER
     httpUpdater.setup(&server);
-    //httpServer.begin();       delete if OK 2016.7.29
   #endif
 }
 

@@ -3,13 +3,14 @@
 void html_index(struct Locsolo *locsol)
 {
   uint16_t i,r,t;
+  Serial.print(F("heap size: "));  Serial.println(ESP.getFreeHeap());
   t=millis();
 String s;
          s =F("<!doctype html>"
              "<html>"
              "<head>"
              "<meta charset=\"utf-8\">"
-             "<title>webszerver</title>"
+             "<title>Locsoló</title>"
              "<link rel=\"stylesheet\" href=\"https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css\">"
              "<link rel=\"shortcut icon\" href=\"http://locsol.pe.hu/locsol/favicon.ico\">"
              "</head>"
@@ -201,7 +202,7 @@ s+=F("</p><br></body>\n"
     "function generatechartData() {\n"
     "var chartData=[];\n"
     "var firstDate=new Date();\n");
-     
+
         s+=F("var epoch=");
         if(month()>10 || month()<4)   s+=sensor.epoch_now - TIME_ZONE * SECS_PER_HOUR;
         else                          s+=sensor.epoch_now - (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;
@@ -407,9 +408,13 @@ s+=F("</p><br></body>\n"
        ""
        "<a href=\"/settings\" target=\"_blank\">settings</a> "
        "</html>");
-  server.send ( 200, "text/html", s );
+  server.send ( 200 , "text/html", s );
+ // server.send ( 200, "text/html", "teszt" );
+  Serial.print(F("heap size: "));  Serial.println(ESP.getFreeHeap());
+  Serial.print(s);
   t=millis()-t;
   Serial.println(t);
+  Serial.println("DEBUG");
  }
 
 void status_respond(struct Locsolo *locsol,uint8_t n)

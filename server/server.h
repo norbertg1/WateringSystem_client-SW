@@ -12,6 +12,8 @@
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoOTA.h>
+#include "WiFiManager.h"          //https://github.com/tzapu/WiFiManager
+
 extern "C" {
 #include "user_interface.h"
 }
@@ -20,6 +22,9 @@ extern "C" {
 #include "client.h"
 #include "server_response.h"
 
+#define SLEEP_TIME_NO_WIFI_SECONDS  60                                    //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
+#define SLEEP_TIME_NO_WIFI          SLEEP_TIME_NO_WIFI_SECONDS * 1000000  //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
+#define SLEEP_TIME_ACESS_POINT 3000                                      //Set timeout after acess point turn off
 #define TIMER_PERIOD 60             //Ilyen gyakran mérek hőmérsékletet, légnyomást esetleg egyéb dolgot
 #define DHT_AVARAGE 10              //Ennyi hőmérsékeltmérésből mérek átlagot
 #define TIME_SYNC_INTERVAL 86400
@@ -135,6 +140,7 @@ bool      timer_flag;
 DHT dht(DHT_PIN,DHT_TYPE);
 Timer timer1;
 
+const char* host = "watering";
 const char* ssid = "wifi";
 const char* password = "";
  
@@ -166,7 +172,6 @@ inline void telnet_debug();
 #endif
 
 #if OTA_WEB_BROWSER
-//  ESP8266WebServer httpServer(8266);  //delete if OK 2016.7.29
   ESP8266HTTPUpdateServer httpUpdater;
 #endif
 
