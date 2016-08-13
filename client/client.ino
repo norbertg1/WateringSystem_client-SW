@@ -52,21 +52,8 @@ void setup() {
   digitalWrite(LOCSOLO_PIN, 0); //set to logical 0
   
   Serial.println();
-/*  Serial.print("Connecting to wifi:");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  uint8_t count=0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    count++;
-    if(count>100) break;
-  }
-  Serial.println("");
-  Serial.println("WiFi connected");  */
   WiFiManager wifiManager;
   wifiManager.setTimeout(120);
-  //wifiManager.autoConnect("Watering_client1");
   if(!wifiManager.autoConnect("Watering_client1")) {
     Serial.println("failed to connect and hit timeout");
     ESP.deepSleep(SLEEP_TIME_NO_WIFI,WAKE_RF_DEFAULT);
@@ -150,7 +137,6 @@ void loop() {
       if(len > 0) len -= c;
     }
   }
-  //http.end();
   String buff_string;
   for(int k=0; k<20; k++){
       buff_string += String((char)buff[k]);

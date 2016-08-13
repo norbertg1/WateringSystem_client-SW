@@ -81,8 +81,8 @@ time_t getTime()
     }
     Serial.println(epoch % 60); // print the second
     
-    if(month()>10 || month()<4)   epoch = secsSince1900 - seventyYears + TIME_ZONE * SECS_PER_HOUR;   //Convert to time zone and daylight saving
-    else                          epoch = secsSince1900 - seventyYears + (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;   //Convert to time zone
+    if(month(epoch)>10 || month(epoch)<4)   epoch = secsSince1900 - seventyYears + TIME_ZONE * SECS_PER_HOUR;   //Convert to time zone and daylight saving
+    else                                    epoch = secsSince1900 - seventyYears + (TIME_ZONE + DAYLIGHT_SAVING) * SECS_PER_HOUR;   //Convert to time zone
     Serial.println("return epoch");
     return epoch;
   }
