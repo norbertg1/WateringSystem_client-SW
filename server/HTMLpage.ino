@@ -411,7 +411,7 @@ s+=F("</p><br></body>\n"
   server.send ( 200 , "text/html", s );
  // server.send ( 200, "text/html", "teszt" );
   Serial.print(F("heap size: "));  Serial.println(ESP.getFreeHeap());
-  Serial.print(s);
+//  Serial.println(s);
   t=millis()-t;
   Serial.println(t);
   Serial.println("DEBUG");
