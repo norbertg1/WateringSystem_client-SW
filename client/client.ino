@@ -12,17 +12,24 @@
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
 
-#define SLEEP_TIME_SECONDS          60  //900                             //when watering is off, in seconds
-#define DELAY_TIME_SECONDS          30                                    //when watering is on, in seconds
-#define SLEEP_TIME_NO_WIFI_SECONDS  60                                    //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
+#define SLEEP_TIME_SECONDS                60  //900                             //when watering is off, in seconds
+#define DELAY_TIME_SECONDS                30                                    //when watering is on, in seconds
+#define SLEEP_TIME_NO_WIFI_SECONDS        60                                    //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  30                                    //The time when valve is switched off in case of broken microswitch or mechanical failure
 
-#define SLEEP_TIME_NO_WIFI          SLEEP_TIME_NO_WIFI_SECONDS * 1000000  //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
-#define SLEEP_TIME                  SLEEP_TIME_SECONDS * 1000000          //when watering is off, in microseconds
-#define DELAY_TIME                  DELAY_TIME_SECONDS * 1000             //when watering is on, in miliseconds
-#define DHT_PIN                     0
-#define DHT_TYPE                    DHT11
-#define LOCSOLO_NUMBER              1
-#define LOCSOLO_PIN                 5
+#define SLEEP_TIME_NO_WIFI                SLEEP_TIME_NO_WIFI_SECONDS * 1000000  //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
+#define SLEEP_TIME                        SLEEP_TIME_SECONDS * 1000000          //when watering is off, in microseconds
+#define DELAY_TIME                        DELAY_TIME_SECONDS * 1000             //when watering is on, in miliseconds
+#define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
+#define DHT_PIN                           0
+#define DHT_TYPE                          DHT11
+#define LOCSOLO_NUMBER                    1
+#define LOCSOLO_PIN                       5
+#define VALVE_H_BRIDGE_RIGHT_PIN          12
+#define VALVE_H_BRIDGE_LEFT_PIN           14
+#define VALVE_SWITCH_VOLTAGE              13
+#define VALVE_SWITCH_ONE                  4
+#define VALVE_SWITCH_TWO                  15
 
 const char* ssid     = "wifi";
 const char* password = "";
@@ -42,15 +49,38 @@ uint16_t  locsolo_start;
 short locsolo_flag=0;
 short locsolo_number = LOCSOLO_NUMBER - 1;
 
-void not_found_handle();
+void valve_on();
+void valve_off();
 
 void setup() {
   Serial.begin(115200);
   delay(10);
 
+  pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
+  pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
+//  pinMode(VALVE_SWITCH_VOLTAGE, OUTPUT);
+  pinMode(VALVE_SWITCH_ONE, INPUT_PULLUP);
+  pinMode(VALVE_SWITCH_TWO, INPUT_PULLUP);
+//  digitalWrite(VALVE_SWITCH_VOLTAGE, 1);
+
   pinMode(LOCSOLO_PIN, OUTPUT); //set as output
   digitalWrite(LOCSOLO_PIN, 0); //set to logical 0
-  
+    while(1){
+    Serial.print("Valve_On");
+    Serial.print("VALVE_SWITCH_ONE:");
+    Serial.print(digitalRead(VALVE_SWITCH_ONE));
+    Serial.print("    VALVE_SWITCH_TWO:");
+    Serial.println(digitalRead(VALVE_SWITCH_TWO));
+    valve_on();
+    delay(20000);
+    Serial.println("Valve_Off");
+    Serial.print("VALVE_SWITCH_ONE:");
+    Serial.print(digitalRead(VALVE_SWITCH_ONE));
+    Serial.print("    VALVE_SWITCH_TWO:");
+    Serial.println(digitalRead(VALVE_SWITCH_TWO));
+    valve_off();
+    delay(20000);
+  }
   Serial.println();
   WiFiManager wifiManager;
   wifiManager.setTimeout(120);
@@ -69,6 +99,8 @@ void setup() {
   }
 
 void loop() {
+
+
   voltage=0;
   temp=0;
   int r,i,len,http_code=0;
@@ -156,3 +188,23 @@ void loop() {
     delay(DELAY_TIME); 
   }
 }
+
+void valve_on(){
+  digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
+  digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
+  uint32_t t=millis();
+  while(!digitalRead(VALVE_SWITCH_TWO) && (millis()-t)<MAX_VALVE_SWITCHING_TIME){
+    delay(100);
+    }
+  }
+
+void valve_off(){
+  uint16_t cnt=0;  
+  digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
+  digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
+  uint32_t t=millis();
+  while(!digitalRead(VALVE_SWITCH_ONE) && (millis()-t)<MAX_VALVE_SWITCHING_TIME){
+    delay(100);
+    }
+}
+
