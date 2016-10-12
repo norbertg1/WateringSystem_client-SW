@@ -55,10 +55,13 @@ extern "C" {
 
 typedef struct
 {
-  short hour;
-  short minute;
-  short second;
-  short weekday;
+  uint16_t Year;
+  short   Month;
+  short   Day;
+  short   Weekday;
+  short   Hour;
+  short   Minute;
+  short   Second;
 }Time;
 Time server_start;
 

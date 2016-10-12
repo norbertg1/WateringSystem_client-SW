@@ -29,6 +29,9 @@
 *.hex
 *.bin
 
+#layout files
+*.gbr
+
 # Debug files
 *.dSYM/
 

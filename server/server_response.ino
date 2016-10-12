@@ -44,8 +44,8 @@ void S(){
 void properties(){
     for(int i=0;i<LOCSOLO_NUMBER;i++){
         (server.arg ( i * 4 + 0 )).toCharArray(locsolo[i].alias, (server.arg ( i * 4 + 0 )).length()+1);
-        locsolo[i].auto_watering_time.hour=(server.arg ( i * 4 + 1 )).toInt();
-        locsolo[i].auto_watering_time.minute=(server.arg ( i * 4 + 2 )).toInt();
+        locsolo[i].auto_watering_time.Hour=(server.arg ( i * 4 + 1 )).toInt();
+        locsolo[i].auto_watering_time.Minute=(server.arg ( i * 4 + 2 )).toInt();
         locsolo[i].duration=(server.arg ( i * 4 + 3 )).toInt() * 60;
       }
     html_settings();

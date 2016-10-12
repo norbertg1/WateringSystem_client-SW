@@ -99,10 +99,11 @@ String s;
   s += hour();
   minute() < 10 ? s += F(":0") : s +=F( ":"); s += minute();
   second() < 10 ? s += F(":0") : s +=F( ":"); s += second();
-  s +=F("&nbsp;&nbsp;&nbsp;&nbsp; start time:");
-  s += server_start.hour;
-  server_start.minute < 10 ? s += ":0" : s += ":"; s += server_start.minute;
-  server_start.second < 10 ? s += ":0" : s += ":"; s += server_start.second;
+  s +=F("&nbsp;&nbsp;&nbsp;&nbsp; start time: ");
+  s += server_start.Year; s +='.'; s += server_start.Month; s += '.'; s += server_start.Day; s += F(".&nbsp;&nbsp;&nbsp;");
+  s += server_start.Hour;
+  server_start.Minute < 10 ? s += ":0" : s += ":"; s += server_start.Minute;
+  server_start.Second < 10 ? s += ":0" : s += ":"; s += server_start.Second;
   s += F("<br><br> <b><font size=\"3\">Hőmérséklet: ");
   s += String(sensor.temperature_avg,1);
   //s += F(" °C&nbsp;&nbsp;&nbsp;&nbsp;Hőérzet: ");
@@ -136,7 +137,7 @@ String s;
 s+=F("<br><br><br><br><b>Auto öntözés:</b><br>");
 for(int i=0;i<LOCSOLO_NUMBER;i++){
   s+=F("Locsolo "); s+=i; s+=(" következő öntözés időpontja: ");
-  if(sensor.water_points>=7 && locsol[i].autom==1) {s+=locsol[i].auto_watering_time.hour; locsol[i].auto_watering_time.minute < 10 ? s += F(":0") : s +=F( ":"); s+=locsol[i].auto_watering_time.minute;}
+  if(sensor.water_points>=7 && locsol[i].autom==1) {s+=locsol[i].auto_watering_time.Hour; locsol[i].auto_watering_time.Minute < 10 ? s += F(":0") : s +=F( ":"); s+=locsol[i].auto_watering_time.Minute;}
   else  s+=F("--");
   s+=F("<br>");
 }
@@ -500,8 +501,8 @@ void html_settings()
     for(int i=0;i<LOCSOLO_NUMBER;i++){
       s+=F("<b>"); s+=locsolo[i].Name;
       s+=F("</b><br>Name: <input type=\"text\" name=\"q\" value=\""); s+=locsolo[i].alias; s+=F("\"><br>");
-      s+=F("Hour: <input type=\"text\" name=\"q\" value=\""); s+=locsolo[i].auto_watering_time.hour; s+=F("\"><br>");
-      s+=F("Minute: <input type=\"text\" name=\"q\" value=\""); s+=locsolo[i].auto_watering_time.minute; s+=F("\"><br>");
+      s+=F("Hour: <input type=\"text\" name=\"q\" value=\""); s+=locsolo[i].auto_watering_time.Hour; s+=F("\"><br>");
+      s+=F("Minute: <input type=\"text\" name=\"q\" value=\""); s+=locsolo[i].auto_watering_time.Minute; s+=F("\"><br>");
       s+=F("Duration: <input type=\"text\" name=\"q\" value=\""); s+=locsolo[i].duration/60; s+=F("\"><br>"); 
     }
       s+=F("<input type=\"submit\" value=\"Submit\">");
@@ -510,7 +511,7 @@ void html_settings()
     s+=F("<br><br><br><br>");
     /*  for(int i;i<LOCSOLO_NUMBER;i++){
         s+="<b>"; s+=locsolo[i].Name; s+="</b><br>";
-        s+="öntözési időpont: "; s+=locsolo[i].auto_watering_time.hour; locsolo[i].auto_watering_time.minute < 10 ? s += ":0" : s += ":"; s+=locsolo[i].auto_watering_time.minute;
+        s+="öntözési időpont: "; s+=locsolo[i].auto_watering_time.Hour; locsolo[i].auto_watering_time.Minute < 10 ? s += ":0" : s += ":"; s+=locsolo[i].auto_watering_time.Minute;
         s+="<br>Időtartam: "; s+=locsolo[i].duration/60; s+=" perc<br><br>";
       }*/
  

@@ -102,9 +102,13 @@ void loop() {
       DHT_sensor_read(&locsolo[0],LOCSOLO_NUMBER);
       auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
       if(flag==0){
-        server_start.second=second();
-        server_start.minute=minute();
-        server_start.hour=hour();
+        server_start.Year=year();
+        server_start.Month=month();
+        server_start.Day=day();
+        server_start.Weekday=weekday();
+        server_start.Second=second();
+        server_start.Minute=minute();
+        server_start.Hour=hour();
         flag=1;
         }   
     }
@@ -241,13 +245,13 @@ void water_points(struct Locsolo *locsol)
 
 void auto_ontozes(struct Locsolo *locsol,uint8_t number){
   for(int l=0;l<number;l++){
-    if(locsol[l].autom==1 && sensor.water_points>=7 && (hour()==locsol[l].auto_watering_time.hour || (hour()-1)==locsol[l].auto_watering_time.hour) && (minute()>=locsol[l].auto_watering_time.minute || (hour()-1)==locsol[l].auto_watering_time.hour) && locsol[l].set==0)
+    if(locsol[l].autom==1 && sensor.water_points>=7 && (hour()==locsol[l].auto_watering_time.Hour || (hour()-1)==locsol[l].auto_watering_time.Hour) && (minute()>=locsol[l].auto_watering_time.Minute || (hour()-1)==locsol[l].auto_watering_time.Hour) && locsol[l].set==0)
     {
       Serial.println(F("AUTO locsolas"));
       locsol[l].set=1; 
       locsol[l].auto_flag=1;
 //    locsol[l].watering_epoch=now();
-//    locsol[i].auto_watering_time.second=second(); locsol[i].auto_watering_time.minute=minute(); locsol[i].auto_watering_time.hour=hour(); locsol[i].auto_watering_time.weekday=weekday();
+//    locsol[i].auto_watering_time.Second=second(); locsol[i].auto_watering_time.Minute=minute(); locsol[i].auto_watering_time.Hour=hour(); locsol[i].auto_watering_time.Weekday=weekday();
 //    write_flash(&sensor,&locsolo[0]);
     }
     if((now()-locsol[l].watering_epoch)>locsol[l].duration && sensor.water_points>=7 && locsol[l].set==1 && locsol[l].auto_flag==0)
@@ -279,8 +283,8 @@ void load_default(struct Locsolo *locsol,uint8_t number)
    locsolo[i].temp_min=999;
    locsolo[i].temperature_graph=HIGH;
    locsolo[i].voltage_graph=HIGH;
-   locsol[i].auto_watering_time.hour=7;
-   locsol[i].auto_watering_time.minute=1;
+   locsol[i].auto_watering_time.Hour=7;
+   locsol[i].auto_watering_time.Minute=1;
    locsol[i].duration=600;
    locsolo[i].auto_flag=0;
    locsolo[i].alias[0]='\n';
