@@ -429,11 +429,9 @@ void status_respond(struct Locsolo *locsol,uint8_t n)
    s+=F(",status: ");
    s+=locsol[i].state;
    s+=F(",voltage: ");
-   if(locsol[i].count==0) s+=String((float)locsol[i].voltage[locsol[i].count]/1000,3);
-   else s+=String((float)locsol[i].voltage[locsol[i].count-1]/1000,3);
+   s+=String((float)locsol[i].voltage[0]/1000,3);
    s+=F(",temperature:");
-   if(locsol[i].count==0) s+=String((float)locsol[i].temp[locsol[i].count]/10,1);
-   else s+=String((float)locsol[i].temp[locsol[i].count-1]/10,1); 
+   s+=String((float)locsol[i].temp[0]/10,1);
    s+=F(",min:");
    s+=String((float)locsol[i].temp_min/10,1);
    s+=F(",max:");

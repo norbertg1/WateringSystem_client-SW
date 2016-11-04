@@ -11,11 +11,15 @@
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
-
-#define SLEEP_TIME_SECONDS                60  //900                             //when watering is off, in seconds
-#define DELAY_TIME_SECONDS                30                                    //when watering is on, in seconds
-#define SLEEP_TIME_NO_WIFI_SECONDS        60                                    //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  30                                    //The time when valve is switched off in case of broken microswitch or mechanical failure
+#include <Ticker.h>
+#include <DNSServer.h>
+//----------------------------------------------------------------settings---------------------------------------------------------------------------------//
+#define Debug_Voltage 0
+//---------------------------------------------------------------End of settings---------------------------------------------------------------------------//
+#define SLEEP_TIME_SECONDS                30  //900                             //when watering is off, in seconds
+#define DELAY_TIME_SECONDS                15                                    //when watering is on, in seconds
+#define SLEEP_TIME_NO_WIFI_SECONDS        30                                    //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  15                                    //The time when valve is switched off in case of broken microswitch or mechanical failure
 
 #define SLEEP_TIME_NO_WIFI                SLEEP_TIME_NO_WIFI_SECONDS * 1000000  //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
 #define SLEEP_TIME                        SLEEP_TIME_SECONDS * 1000000          //when watering is off, in microseconds
@@ -24,12 +28,10 @@
 #define DHT_PIN                           0
 #define DHT_TYPE                          DHT11
 #define LOCSOLO_NUMBER                    1
-#define LOCSOLO_PIN                       5
 #define VALVE_H_BRIDGE_RIGHT_PIN          12
 #define VALVE_H_BRIDGE_LEFT_PIN           14
-#define VALVE_SWITCH_VOLTAGE              13
 #define VALVE_SWITCH_ONE                  4
-#define VALVE_SWITCH_TWO                  15
+#define VALVE_SWITCH_TWO                  13
 
 const char* ssid     = "wifi";
 const char* password = "";
@@ -39,6 +41,7 @@ const char* host = "192.168.1.100";
 ADC_MODE(ADC_VCC);
 DHT dht(DHT_PIN,DHT_TYPE);
 ESP8266WebServer server ( 80 );
+Ticker Voltage_Read;            //Install periodic timer that in specified time reads battery voltage. ADC in must be unconnected!!!
 
 uint32_t voltage;
 uint8_t hum;
@@ -55,41 +58,38 @@ void valve_off();
 void setup() {
   Serial.begin(115200);
   delay(10);
-
+#if Debug_Voltage
+  Voltage_Read.attach(0.1,battery_read);
+#endif
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
-//  pinMode(VALVE_SWITCH_VOLTAGE, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT_PULLUP);
   pinMode(VALVE_SWITCH_TWO, INPUT_PULLUP);
-//  digitalWrite(VALVE_SWITCH_VOLTAGE, 1);
-
-  pinMode(LOCSOLO_PIN, OUTPUT); //set as output
-  digitalWrite(LOCSOLO_PIN, 0); //set to logical 0
-    while(1){
-    Serial.print("Valve_On");
-    Serial.print("VALVE_SWITCH_ONE:");
-    Serial.print(digitalRead(VALVE_SWITCH_ONE));
-    Serial.print("    VALVE_SWITCH_TWO:");
-    Serial.println(digitalRead(VALVE_SWITCH_TWO));
-    valve_on();
-    delay(20000);
-    Serial.println("Valve_Off");
-    Serial.print("VALVE_SWITCH_ONE:");
-    Serial.print(digitalRead(VALVE_SWITCH_ONE));
-    Serial.print("    VALVE_SWITCH_TWO:");
-    Serial.println(digitalRead(VALVE_SWITCH_TWO));
-    valve_off();
-    delay(20000);
-  }
-  Serial.println();
   WiFiManager wifiManager;
+  WiFi.mode(WIFI_STA);
+//  wifiManager.setConfigPortalTimeout(120);
+  int i=0;
+  while(i<200){
+    i++;
+    delay(100);
+    if((WiFi.status()==WL_CONNECTED)) break;
+  }
+  if(!(WiFi.status()==WL_CONNECTED)){
+    wifiManager.setConfigPortalTimeout(120);
+    if (!wifiManager.startConfigPortal("ESP8266")) {//Delete these two parameters if you do not want a WiFi password on your configuration access point
+      Serial.println("Not connected to WiFi but continuing anyway.");
+  }
+  }
+  
+  
+/*
   wifiManager.setTimeout(120);
   if(!wifiManager.autoConnect("Watering_client1")) {
     Serial.println("failed to connect and hit timeout");
     ESP.deepSleep(SLEEP_TIME_NO_WIFI,WAKE_RF_DEFAULT);
     delay(100);
   }
-
+*/
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   MDNS.begin("watering_client1");
@@ -99,8 +99,6 @@ void setup() {
   }
 
 void loop() {
-
-
   voltage=0;
   temp=0;
   int r,i,len,http_code=0;
@@ -113,6 +111,7 @@ void loop() {
   {
     voltage+=ESP.getVcc();
   }
+  voltage=voltage/50;
   Serial.print("Voltage:");  Serial.print(voltage); 
     do{
       temp=dht.readTemperature();
@@ -150,7 +149,7 @@ void loop() {
   }
   String s="http:";
   s+="//" + String(MDNS.IP(0)[0]) + "." + String(MDNS.IP(0)[1]) + "." + String(MDNS.IP(0)[2]) + "." + String(MDNS.IP(0)[3]);
-  s+="/client?=" + String(locsolo_number) + "&=" + String(temp) + "&=" + String(hum) + "&=" + String(voltage/50) + "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
+  s+="/client?=" + String(locsolo_number) + "&=" + String(temp) + "&=" + String(hum) + "&=" + String(voltage) + "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
   Serial.println(s);
   count=0;
   while(http_code!=200 && count < 3){
@@ -175,7 +174,8 @@ void loop() {
       }
   Serial.println(buff_string);
   locsolo_state=(buff_string.substring(6,(buff_string.indexOf("_")))).toInt();
-  digitalWrite(LOCSOLO_PIN, locsolo_state);
+  if(locsolo_state && voltage>3.0)  valve_on();
+  else  valve_off();
   if(locsolo_state == 0){
     Serial.println("Deep Sleep");  
     http.end();
@@ -208,3 +208,6 @@ void valve_off(){
     }
 }
 
+void battery_read(){
+  Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
+}
