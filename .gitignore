@@ -35,5 +35,13 @@
 # Debug files
 *.dSYM/
 
+#Altium
+*.Dat
+*.htm
+*.REP
+*.TLT
+/PCB/PCB/*.pdf
+
 #directories
-/server/PCB
+PCB/PCB/**/
+

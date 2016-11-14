@@ -13,15 +13,14 @@
 #include <DHT.h>
 #include <Ticker.h>
 #include <DNSServer.h>
-//----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------settings---------------------------------------------------------------------------------//
 #define Debug_Voltage 0
-#define SLEEP_TIME_SECONDS                900                             //when watering is off, in seconds
-#define DELAY_TIME_SECONDS                60                              //when watering is on, in seconds
-#define SLEEP_TIME_NO_WIFI_SECONDS        120                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  15                              //The time when valve is switched off in case of broken microswitch or mechanical failure
-//---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
+//---------------------------------------------------------------End of settings---------------------------------------------------------------------------//
+#define SLEEP_TIME_SECONDS                30  //900                             //when watering is off, in seconds
+#define DELAY_TIME_SECONDS                15                                    //when watering is on, in seconds
+#define SLEEP_TIME_NO_WIFI_SECONDS        30                                    //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  15                                    //The time when valve is switched off in case of broken microswitch or mechanical failure
 
-//------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
 #define SLEEP_TIME_NO_WIFI                SLEEP_TIME_NO_WIFI_SECONDS * 1000000  //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
 #define SLEEP_TIME                        SLEEP_TIME_SECONDS * 1000000          //when watering is off, in microseconds
 #define DELAY_TIME                        DELAY_TIME_SECONDS * 1000             //when watering is on, in miliseconds
@@ -33,7 +32,7 @@
 #define VALVE_H_BRIDGE_LEFT_PIN           14
 #define VALVE_SWITCH_ONE                  4
 #define VALVE_SWITCH_TWO                  13
-//--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
+
 const char* ssid     = "wifi";
 const char* password = "";
 
@@ -53,30 +52,22 @@ uint16_t  locsolo_start;
 short locsolo_flag=0;
 short locsolo_number = LOCSOLO_NUMBER - 1;
 
-void valve_turn_on();
-void valve_turn_off();
-int valve_state();
+void valve_on();
+void valve_off();
 
 void setup() {
-  voltage=0;
-  for(int j=0;j<50;j++)
-  {
-    voltage+=ESP.getVcc();
-  }
-  voltage=voltage/50;
   Serial.begin(115200);
   delay(10);
-#if Debug_Voltage                         //This line installs interrupt, which prints into serial port battery voltage in every 100ms
+#if Debug_Voltage
   Voltage_Read.attach(0.1,battery_read);
 #endif
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT_PULLUP);
   pinMode(VALVE_SWITCH_TWO, INPUT_PULLUP);
-  if(valve_state) valve_turn_off();
   WiFiManager wifiManager;
   WiFi.mode(WIFI_STA);
- 
+//  wifiManager.setConfigPortalTimeout(120);
   int i=0;
   while(i<200){
     i++;
@@ -85,10 +76,20 @@ void setup() {
   }
   if(!(WiFi.status()==WL_CONNECTED)){
     wifiManager.setConfigPortalTimeout(120);
-    if(!wifiManager.startConfigPortal("ESP8266_client")) {
+    if (!wifiManager.startConfigPortal("ESP8266")) {//Delete these two parameters if you do not want a WiFi password on your configuration access point
       Serial.println("Not connected to WiFi but continuing anyway.");
-    }
   }
+  }
+  
+  
+/*
+  wifiManager.setTimeout(120);
+  if(!wifiManager.autoConnect("Watering_client1")) {
+    Serial.println("failed to connect and hit timeout");
+    ESP.deepSleep(SLEEP_TIME_NO_WIFI,WAKE_RF_DEFAULT);
+    delay(100);
+  }
+*/
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   MDNS.begin("watering_client1");
@@ -173,8 +174,8 @@ void loop() {
       }
   Serial.println(buff_string);
   locsolo_state=(buff_string.substring(6,(buff_string.indexOf("_")))).toInt();
-  if(locsolo_state && (float)voltage/1000>3.0)  valve_turn_on();
-  else  valve_turn_off();
+  if(locsolo_state && voltage>3.0)  valve_on();
+  else  valve_off();
   if(locsolo_state == 0){
     Serial.println("Deep Sleep");  
     http.end();
@@ -188,17 +189,16 @@ void loop() {
   }
 }
 
-void valve_turn_on(){
+void valve_on(){
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
   uint32_t t=millis();
   while(!digitalRead(VALVE_SWITCH_TWO) && (millis()-t)<MAX_VALVE_SWITCHING_TIME){
     delay(100);
     }
-  if(valve_state) locsolo_state=HIGH;
   }
 
-void valve_turn_off(){
+void valve_off(){
   uint16_t cnt=0;  
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
@@ -211,8 +211,3 @@ void valve_turn_off(){
 void battery_read(){
   Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
 }
-
-int valve_state(){
-  return digitalRead(VALVE_SWITCH_TWO);
-}
-
