@@ -191,8 +191,8 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     sensor.temperature_saved[0] = sensor.temperature_avg*10;
     sensor.humidity_saved[0]    = sensor.humidity_avg;
     sensor.epoch_now=now();
-    for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a klien feszültség és hőmérséklet értékei az előző értéket veszik fel
-      for(int j=LOCSOL_MEMORY-1;j>=0;j--){
+    for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a kliens feszültség és hőmérséklet értékei az előző értéket veszik fel
+      for(int j=LOCSOL_MEMORY-1;j>0;j--){
         locsol[i].voltage[j]  = locsol[i].voltage[j-1];
         locsol[i].temp[j]     = locsol[i].temp[j-1];
       }
