@@ -1,4 +1,4 @@
-/*
+ /*
  *Locsolórendszer és meteorológiai állomás. 
  *
  *
@@ -54,6 +54,7 @@ void setup() {
   server.on ( "/dht_status", dht_status_handle );
   server.on ( "/status", stat );
   server.on ( "/client", client_handle );
+  server.on ( "/client_login", client_logintrack );
 //  server.on ( "/who", who );
   server.onNotFound ( not_found_handle );
   server.begin();
@@ -317,6 +318,10 @@ void load_default(struct Locsolo *locsol,uint8_t number)
  sensor.humidity_graph=HIGH;
  sensor.thisday=0;
  sensor.wifi_reset=0;
+ sensor.lastlogin_epoch=0;
+ for(int i=0;i<SENSOR_MEMORY;i++){
+  sensor.login[i]=0;
+ }
 }
 
 void reset_cmd()
@@ -448,5 +453,13 @@ inline void telnet_debug(){
   #endif
 }
 
-void loggin_time() {
- for(int i=0;i<sensor_memory;i++){sensor.loggin_time
+
+void client_logintrack(){
+    String message = String(sensor.lastlogin_epoch,DEC);
+    message += "\n";
+    for(int i=0;i<SENSOR_MEMORY;i++){
+      message += String(sensor.login[i],DEC);
+      message += "\n";
+    }
+    server.send ( 200 , "text", message );
+}

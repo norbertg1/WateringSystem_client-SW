@@ -121,8 +121,8 @@ typedef struct
   uint8_t         humidity_graph=1;    //Toggle on/off humidity graph
   uint8_t         thisday=0;            //for once/day running codes
   uint8_t         wifi_reset;         //Number of reset becouse of bad wifi signal
-  unsigned long loggin_epoch;
-  uint16_t loggin[SENSOR_MEMORY];
+  unsigned long lastlogin_epoch;
+  uint16_t login[SENSOR_MEMORY];
 }Sensor;
 Sensor __attribute__((aligned(4))) sensor;
 
@@ -171,6 +171,7 @@ void ota_arduino_ide();
 void loggin_time();
 inline void ota_web_browser();
 inline void telnet_debug();
+void client_logintrack();
 
 #if TELNET_DEBUG
   WiFiServer  TelnetDebug(18266);

@@ -1,5 +1,5 @@
  /*
- *  This program login into ESP8266_locsolo_server. Gets the A0 pin status from the server then sets it. Also sends Vcc voltage and temperature.
+ *  This program login into ESP8266_locsolo_server. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature.
  *  When A0 is HIGH ESP8266 loggin in to the serve every 30seconds, if it is LOW goind to deep sleep for 300seconds
  *  Created on 2015.08-2015.11
  *  by Norbi
@@ -17,7 +17,7 @@
 #include <Ticker.h>
 #include <DNSServer.h>
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
-#define Debug_Voltage 0
+#define Debug_Voltage                     1
 #define SLEEP_TIME_SECONDS                900                             //when watering is off, in seconds
 #define DELAY_TIME_SECONDS                60                              //when watering is on, in seconds
 #define SLEEP_TIME_NO_WIFI_SECONDS        120                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
@@ -31,21 +31,22 @@
 #define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
 #define DHT_PIN                           0
 #define DHT_TYPE                          DHT11
-#define LOCSOLO_NUMBER                    1
+#define LOCSOLO_NUMBER                    2
 #define VALVE_H_BRIDGE_RIGHT_PIN          12
 #define VALVE_H_BRIDGE_LEFT_PIN           14
 #define VALVE_SWITCH_ONE                  4
 #define VALVE_SWITCH_TWO                  13
+#define ADC_SWITCH                        15
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* ssid     = "wifi";
 const char* password = "";
 
 const char* host = "192.168.1.100";
 
-ADC_MODE(ADC_VCC);
 DHT dht(DHT_PIN,DHT_TYPE);
 ESP8266WebServer server ( 80 );
 Ticker Voltage_Read;            //Install periodic timer that in specified time reads battery voltage. ADC in must be unconnected!!!
+ADC_MODE(ADC_VCC);
 
 uint32_t voltage;
 uint8_t hum;
@@ -55,26 +56,45 @@ uint16_t  locsolo_duration;
 uint16_t  locsolo_start;
 short locsolo_flag=0;
 short locsolo_number = LOCSOLO_NUMBER - 1;
-
+ 
 void valve_turn_on();
 void valve_turn_off();
 int valve_state();
 
 void setup() {
+  Serial.begin(115200);
+  delay(100);
+  Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
+  Serial.print("ADC function Voltage: "); Serial.print(analogRead(A0)); Serial.println("V");
+  digitalWrite(ADC_SWITCH, 1);
+  delay(100);
+  Serial.println("ADC switch HIGH");
+  Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
+  Serial.print("ADC function Voltage: "); Serial.print(analogRead(A0)); Serial.println("V");
   voltage=0;
   for(int j=0;j<50;j++)
   {
-    voltage+=ESP.getVcc();
+    //voltage+=ESP.getVcc();
   }
   voltage=voltage/50;
   Serial.begin(115200);
   Serial.println("\nESP8266_client start!");
   delay(10);
 #if Debug_Voltage                         //This line installs interrupt, which prints into serial port battery voltage in every 100ms
-  Voltage_Read.attach(0.1,battery_read);
+  Voltage_Read.attach(0.1,battery_read);  pinMode(ADC_SWITCH, OUTPUT);
+
+  while(1){
+    delay(30000);
+//    digitalWrite(ADC_SWITCH, 1);
+    Serial.println("ADC switch HIGH");
+    delay(30000);
+    digitalWrite(ADC_SWITCH, 0);
+    Serial.println("ADC switch LOW");
+  }
 #endif
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
+  pinMode(ADC_SWITCH, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT_PULLUP);
   pinMode(VALVE_SWITCH_TWO, INPUT_PULLUP);
   if(valve_state) valve_turn_off();
@@ -103,6 +123,14 @@ void setup() {
   }
 
 void loop() {
+  while(1){
+    delay(2000);
+    digitalWrite(ADC_SWITCH, 1);
+    Serial.println("ADC switch HIGH");
+    delay(2000);
+    digitalWrite(ADC_SWITCH, 0);
+    Serial.println("ADC switch LOW");
+  }
   voltage=0;
   temp=0;
   int r,i,len,http_code=0;
@@ -220,6 +248,8 @@ void valve_turn_off(){
 
 void battery_read(){
   Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
+  Serial.print("ADC function Voltage: "); Serial.print((float)analogRead(A0)*5.7); Serial.println("V");
+  
 }
 
 int valve_state(){
