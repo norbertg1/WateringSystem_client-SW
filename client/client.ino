@@ -16,12 +16,16 @@
 #include <DHT.h>
 #include <Ticker.h>
 #include <DNSServer.h>
+#include "BMP280.h"
+
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
-#define Debug_Voltage                     1
-#define SLEEP_TIME_SECONDS                900                             //when watering is off, in seconds
+#define Debug_Voltage                     0
+#define SLEEP_TIME_SECONDS                120//900                             //when watering is off, in seconds
 #define DELAY_TIME_SECONDS                60                              //when watering is on, in seconds
 #define SLEEP_TIME_NO_WIFI_SECONDS        120                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  15                              //The time when valve is switched off in case of broken microswitch or mechanical failure
+#define DHT_ENABLE                        0
+#define BMP_ENABLE                        1
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -37,6 +41,7 @@
 #define VALVE_SWITCH_ONE                  4
 #define VALVE_SWITCH_TWO                  13
 #define ADC_SWITCH                        15
+#define VOLTAGE_TO_DIVIDER                3
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* ssid     = "wifi";
 const char* password = "";
@@ -46,9 +51,11 @@ const char* host = "192.168.1.100";
 DHT dht(DHT_PIN,DHT_TYPE);
 ESP8266WebServer server ( 80 );
 Ticker Voltage_Read;            //Install periodic timer that in specified time reads battery voltage. ADC in must be unconnected!!!
-ADC_MODE(ADC_VCC);
+BMP280 bmp;
+//ADC_MODE(ADC_VCC);
 
-uint32_t voltage;
+uint32_t voltage,moisture;
+double T,P;
 uint8_t hum;
 float temp,temperature;
 short locsolo_state=LOW;
@@ -64,37 +71,12 @@ int valve_state();
 void setup() {
   Serial.begin(115200);
   delay(100);
-  Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
-  Serial.print("ADC function Voltage: "); Serial.print(analogRead(A0)); Serial.println("V");
-  digitalWrite(ADC_SWITCH, 1);
-  delay(100);
-  Serial.println("ADC switch HIGH");
-  Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
-  Serial.print("ADC function Voltage: "); Serial.print(analogRead(A0)); Serial.println("V");
-  voltage=0;
-  for(int j=0;j<50;j++)
-  {
-    //voltage+=ESP.getVcc();
-  }
-  voltage=voltage/50;
-  Serial.begin(115200);
+  Serial.println(ESP.getResetReason());
   Serial.println("\nESP8266_client start!");
-  delay(10);
-#if Debug_Voltage                         //This line installs interrupt, which prints into serial port battery voltage in every 100ms
-  Voltage_Read.attach(0.1,battery_read);  pinMode(ADC_SWITCH, OUTPUT);
-
-  while(1){
-    delay(30000);
-//    digitalWrite(ADC_SWITCH, 1);
-    Serial.println("ADC switch HIGH");
-    delay(30000);
-    digitalWrite(ADC_SWITCH, 0);
-    Serial.println("ADC switch LOW");
-  }
-#endif
+  pinMode(ADC_SWITCH, OUTPUT);
+  pinMode(VOLTAGE_TO_DIVIDER, OUTPUT);
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
-  pinMode(ADC_SWITCH, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT_PULLUP);
   pinMode(VALVE_SWITCH_TWO, INPUT_PULLUP);
   if(valve_state) valve_turn_off();
@@ -112,57 +94,58 @@ void setup() {
     wifiManager.setConfigPortalTimeout(120);
     if(!wifiManager.startConfigPortal("ESP8266_client")) {
       Serial.println("Not connected to WiFi but continuing anyway.");
+      Serial.println("Deep Sleep");
+      ESP.deepSleep(SLEEP_TIME_NO_WIFI,WAKE_RF_DEFAULT);
     }
   }
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   MDNS.begin("watering_client1");
   MDNS.addService("watering_server", "tcp", 8080);
-  dht.begin();           // initialize temperature sensor
-  
+  if(!bmp.begin())  {Serial.println("BMP init failed!");    bmp.setOversampling(4);}
+  else              Serial.println("BMP init success!");
   }
 
 void loop() {
-  while(1){
-    delay(2000);
-    digitalWrite(ADC_SWITCH, 1);
-    Serial.println("ADC switch HIGH");
-    delay(2000);
-    digitalWrite(ADC_SWITCH, 0);
-    Serial.println("ADC switch LOW");
-  }
-  voltage=0;
-  temp=0;
   int r,i,len,http_code=0;
   HTTPClient http;
   WiFiClient *stream;
   uint8_t buff[128] = { 0 };
   uint8_t mn=0,count=0;
   
-  for(int j=0;j<50;j++)
-  {
-    voltage+=ESP.getVcc();
-  }
-  voltage=voltage/50;
-  Serial.print("Voltage:");  Serial.print(voltage); 
-    do{
-      temp=dht.readTemperature();
-      delay(500);
-      mn++;
-    }while(isnan(temp) && mn<5);
-  mn=0;  
-  Serial.print(" Temperature:"); Serial.println(temp);
-  do{
-      hum=dht.readHumidity();
-      delay(500);
-      mn++;
-    }while(isnan(hum) && mn<5);
-  if(isnan(temp) || isnan(hum)) {temp=0;hum=0; delay(100);}
+  digitalWrite(ADC_SWITCH, 0);
+  digitalWrite(VOLTAGE_TO_DIVIDER, 1);
+  delay(200);
+  voltage=0;
+  for(int j=0;j<50;j++) voltage+=analogRead(A0);
+  digitalWrite(VOLTAGE_TO_DIVIDER, 0);
+  voltage=(voltage/50)*5.7;                           //5.7 is the resistor divider value
+  Serial.print("Voltage:");  Serial.println(voltage); 
 
+  digitalWrite(ADC_SWITCH, 1);
+  delay(200);
+  moisture=0;
+  for(int j=0;j<50;j++) moisture+=analogRead(A0);
+  moisture=((moisture/50)/1024.0)*100;
+  Serial.print("Moisture:");  Serial.println(moisture);
+  
+  double t=0,p=0;
+  for(int i=0;i<10;i++){
+    delay(bmp.startMeasurment());
+    bmp.getTemperatureAndPressure(T,P);
+    t+=T;
+    p+=P;
+  }
+  T=t/10;
+  P=p/10;
+  Serial.print("T=");     Serial.print(T);
+  Serial.print("   P=");  Serial.println(P);
+
+  ESP.restart();
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   IPAddress IP=WiFi.localIP();
-
+  
   int n=0;
   while(n == 0 && count < 3){
     n=MDNS.queryService("watering_server", "tcp");
@@ -181,7 +164,7 @@ void loop() {
   }
   String s="http:";
   s+="//" + String(MDNS.IP(0)[0]) + "." + String(MDNS.IP(0)[1]) + "." + String(MDNS.IP(0)[2]) + "." + String(MDNS.IP(0)[3]);
-  s+="/client?=" + String(locsolo_number) + "&=" + String(temp) + "&=" + String(hum) + "&=" + String(voltage) + "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
+  s+="/client?=" + String(locsolo_number) + "&=" + String(T*10) + "&=" + String(moisture) + "&=" + String(voltage) + "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
   Serial.println(s);
   count=0;
   while(http_code!=200 && count < 3){
@@ -248,8 +231,7 @@ void valve_turn_off(){
 
 void battery_read(){
   Serial.print("Voltage: "); Serial.print((float)ESP.getVcc()/1000); Serial.println("V");
-  Serial.print("ADC function Voltage: "); Serial.print((float)analogRead(A0)*5.7); Serial.println("V");
-  
+  Serial.print("ADC function Voltage: "); Serial.print((float)analogRead(A0)*5.7); Serial.println("V");  
 }
 
 int valve_state(){

@@ -3,6 +3,7 @@
 
 void client_handle()  //Ha kapcsolodik a kliens ez a kódsor fog lefutni
 {
+  Serial.println(F("Client connected"));
   String s;
   locsolo[(server.arg(0)).toInt()].temp[0]    = (server.arg(1)).toInt();
   locsolo[(server.arg(0)).toInt()].humidity   = (server.arg(2)).toInt();
@@ -27,6 +28,10 @@ void client_handle()  //Ha kapcsolodik a kliens ez a kódsor fog lefutni
     }
     if(sensor.lastlogin_epoch)  sensor.login[0] = now() - sensor.lastlogin_epoch;
     sensor.lastlogin_epoch = now();
+  Serial.print(F("Client temp:"));     Serial.println(locsolo[(server.arg(0)).toInt()].temp[0]);
+  Serial.print(F("Client humidity:")); Serial.println(locsolo[(server.arg(0)).toInt()].humidity);
+  Serial.print(F("Client voltage:"));  Serial.println(locsolo[(server.arg(0)).toInt()].voltage[0]);
+  Serial.println(F("Client ")); Serial.println((server.arg(0)).toInt()); Serial.println(F(" connected succesful!"));
 }
 
 struct Locsolo printstatus1(struct Locsolo *locsol, uint8_t i)
