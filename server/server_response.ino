@@ -36,8 +36,8 @@ void S(){
   sensor.temperature_graph  = (server.arg ( 0 )).toInt();
   sensor.humidity_graph     = (server.arg ( 1 )).toInt();
   for(int i=0;i<LOCSOLO_NUMBER;i++){
-    locsolo[i].temperature_graph  = (server.arg ( i * 2 + 1 + 2 )).toInt();
-    locsolo[i].voltage_graph      = (server.arg ( i * 2 + 2 + 2 )).toInt();
+    locsolo[i].temperature_graph  = (server.arg ( i * 2  + 2 )).toInt();
+    locsolo[i].voltage_graph      = (server.arg ( i * 2 + 1 + 2 )).toInt();
   }
 }
 

@@ -20,12 +20,10 @@
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define Debug_Voltage                     0
-#define SLEEP_TIME_SECONDS                120//900                             //when watering is off, in seconds
+#define SLEEP_TIME_SECONDS                900                        //when watering is off, in seconds
 #define DELAY_TIME_SECONDS                60                              //when watering is on, in seconds
 #define SLEEP_TIME_NO_WIFI_SECONDS        120                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  15                              //The time when valve is switched off in case of broken microswitch or mechanical failure
-#define DHT_ENABLE                        0
-#define BMP_ENABLE                        1
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -95,7 +93,7 @@ void setup() {
     if(!wifiManager.startConfigPortal("ESP8266_client")) {
       Serial.println("Not connected to WiFi but continuing anyway.");
       Serial.println("Deep Sleep");
-      ESP.deepSleep(SLEEP_TIME_NO_WIFI,WAKE_RF_DEFAULT);
+      //ESP.deepSleep(0);
     }
   }
   Serial.println("IP address: ");
@@ -141,7 +139,6 @@ void loop() {
   Serial.print("T=");     Serial.print(T);
   Serial.print("   P=");  Serial.println(P);
 
-  ESP.restart();
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   IPAddress IP=WiFi.localIP();
@@ -164,7 +161,7 @@ void loop() {
   }
   String s="http:";
   s+="//" + String(MDNS.IP(0)[0]) + "." + String(MDNS.IP(0)[1]) + "." + String(MDNS.IP(0)[2]) + "." + String(MDNS.IP(0)[3]);
-  s+="/client?=" + String(locsolo_number) + "&=" + String(T*10) + "&=" + String(moisture) + "&=" + String(voltage) + "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
+  s+="/client?=" + String(locsolo_number) + "&=" + String(T*100) + "&=" + String(moisture) + "&=" + String(voltage) + "&=" + String(P)+ "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
   Serial.println(s);
   count=0;
   while(http_code!=200 && count < 3){

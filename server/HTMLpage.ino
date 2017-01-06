@@ -211,7 +211,6 @@ s+=F("</p><br></body>\n"
        for (i=0; i < sensor.count; i++)                      //sends the saved epoch data to HTML page graphs
          {            
          s += sensor.epoch_saved_dt[i]; s += ",";
-         //if(s.length()>2900) {client->print(s); s.remove(0);}
          }
        s+=F("];\n var temperature=[");
         if(sensor.temperature_graph) send_data_temperature(sensor.temperature_saved,&sensor.count,&sensor.count,&s);
@@ -223,9 +222,6 @@ s+=F("</p><br></body>\n"
        { 
        s +=F("];\nvar "); s+=locsolo[i].Name; s+=F("_temp=[");
         if(locsolo[i].temperature_graph) send_data_temperature(locsol[i].temp,&locsol[i].count,&sensor.count,&s);
-//      s += "];\n"; //remove if OK var ";
-//       s+=locsolo[i].Name; s+="_alias1=\""; s += locsolo[i].alias1; s+="\";\n var ";  //remove if OK
-//       s+=locsolo[i].Name; s+="_alias2=\""; s += locsolo[i].alias2;                   //remove if OK
        s+=F("];\nvar "); s+=locsolo[i].Name; s+=F("_voltage=[");
         if(locsolo[i].voltage_graph) send_data_voltage(locsol[i].voltage,&locsol[i].count,&sensor.count,&s);
        }
@@ -313,9 +309,9 @@ s+=F("</p><br></body>\n"
         "\"negativeLineColor\": \"#637bb6\","
         "\"type\": \"smoothedLine\","
         "\"title\": \""); s+=locsolo[0].alias; s+=F(" volt.");
-     s+=F("\",\"valueField\": \"locs1_voltage\""
+     s+=F("\",\"valueField\": \"locs1_voltage\"");
 #if LOCSOLO_NUMBER > 1
-    "},\n{"
+    s+=F("},\n{"
         "\"id\":\"g5\","
         "\"balloonText\": \"[[category]]<br><b><span style='font-size:14px;'>[[locs2_temp]]</span></b>\","
         "\"bullet\": \"round\","
@@ -339,10 +335,10 @@ s+=F("</p><br></body>\n"
         "\"title\": \""); s+=locsolo[1].alias;  s+=F(" volt.");
   //client->print(s);
   Serial.println("p:15");
-     s+=F("\",\"valueField\": \"locs2_voltage\""
+     s+=F("\",\"valueField\": \"locs2_voltage\"");
  #endif
 #if LOCSOLO_NUMBER > 2
-    "},\n{"
+    s+=F("},\n{"
         "\"id\":\"g7\","
         "\"balloonText\": \"[[category]]<br><b><span style='font-size:14px;'>[[locs3_temp]]</span></b>\","
         "\"bullet\": \"round\","
@@ -363,9 +359,11 @@ s+=F("</p><br></body>\n"
         "\"negativeLineColor\": \"#637bb6\","
         "\"type\": \"smoothedLine\","
         "\"title\": \""); s+=locsolo[2].alias;   s+=F(" volt.");
-     s+=F("\",\"valueField\": \"locs3_voltage\""
+     s+=F("\",\"valueField\": \"locs3_voltage\"");
 #endif
-     "},],"
+//server.send ( 200 , "text/html", s );
+//Serial.print(F("Server.send,heap size: "));  Serial.println(ESP.getFreeHeap());
+  s+=F("},],"
     "\n"
    "\"chartScrollbar\": {"
         "\"graph\":\"g1\","
@@ -409,12 +407,11 @@ s+=F("</p><br></body>\n"
        ""
        "<a href=\"/settings\" target=\"_blank\">settings</a> "
        "</html>");
-  server.send ( 200 , "text/html", s );
- // server.send ( 200, "text/html", "teszt" );
-  Serial.print(F("heap size: "));  Serial.println(ESP.getFreeHeap());
-//  Serial.println(s);
+  server.sendContent(s);
+  //server.send ( 200 , "text/html", s );
+  Serial.print(F("Server.send,heap size: "));  Serial.println(ESP.getFreeHeap());
   t=millis()-t;
-  Serial.println(t);
+  Serial.println("t");Serial.println(t);
   Serial.println("DEBUG");
  }
 
@@ -431,11 +428,11 @@ void status_respond(struct Locsolo *locsol,uint8_t n)
    s+=F(",voltage: ");
    s+=String((float)locsol[i].voltage[0]/1000,3);
    s+=F(",temperature:");
-   s+=String((float)locsol[i].temp[0]/10,1);
+   s+=String((float)locsol[i].temp[0]/100,2);
    s+=F(",min:");
-   s+=String((float)locsol[i].temp_min/10,1);
+   s+=String((float)locsol[i].temp_min/100,2);
    s+=F(",max:");
-   s+=String((float)locsol[i].temp_max/10,1);
+   s+=String((float)locsol[i].temp_max/100,2);
    s+=F(",humidity:");
    s+=locsol[i].humidity;
    s+=F(",auto: ");
@@ -517,30 +514,27 @@ void html_settings()
   s+=F("</body>"
       "</html>"
     "<script src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js\"></script><script>"
-      "var $gomb = $('#ok');"
-      "$gomb.click(function() {"
-         "var r = 'q=';"
-         "$('input[type=checkbox]').each(function(i, checkbox) {"
-          "r += checkbox.checked ? 1 : 0; r+='&q='"
-          "});"
-          "$.get('/S?' + r);})"
+      "$('#ok').click(function() {"
+      "r = '/S?q=' + $('input[type=checkbox]').map(function(i, j){return j.checked ? 1 : 0}).toArray().join('&q=');"
+      "$.get(r );"
+      "});"
       "</script>");
       server.send ( 200, "text/html", s );
-  //client->println(s);
 }
 
+
 void send_data_temperature(int16_t *data,uint16_t *count,uint16_t *sensor_count,String *s_){
+  for (int i=0; i < *count; i++)
+         {
+         *s_ += String((float)data[i]/100,2);
+         *s_ += ",";
+         //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
+         }
   if(*sensor_count>*count) {                                     //Ez azert van, mert ha az ext. sensorok adataibol kevesebbet jegyez meg a program,
           for(int j=0;j<((*sensor_count)-(*count));j++) {                     //ilyenkor a hianyzo adatokat feltöltom nullakkal, mert sajnos kell a grafikonnak hogy az osszes
             *s_+="0"; *s_+=",";                                         //tomb azonos meretu legyen
             //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
           }
-         }
-  for (int i=0; i < *count; i++)
-         {
-         *s_ += String((float)data[i]/10,2);
-         *s_ += ",";
-         //if(s_->length()>2850) {client->print(*s_); s_->remove(0);}
          }
 }
 void send_data_humidity(uint8_t *data,uint16_t *count,String *s_){

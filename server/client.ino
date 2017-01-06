@@ -31,7 +31,7 @@ void client_handle()  //Ha kapcsolodik a kliens ez a kódsor fog lefutni
   Serial.print(F("Client temp:"));     Serial.println(locsolo[(server.arg(0)).toInt()].temp[0]);
   Serial.print(F("Client humidity:")); Serial.println(locsolo[(server.arg(0)).toInt()].humidity);
   Serial.print(F("Client voltage:"));  Serial.println(locsolo[(server.arg(0)).toInt()].voltage[0]);
-  Serial.println(F("Client ")); Serial.println((server.arg(0)).toInt()); Serial.println(F(" connected succesful!"));
+  Serial.print(F("Client ")); Serial.print((server.arg(0)).toInt()); Serial.println(F(" connected succesful!"));
 }
 
 struct Locsolo printstatus1(struct Locsolo *locsol, uint8_t i)

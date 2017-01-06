@@ -26,6 +26,7 @@ void setup() {
   Serial.setDebugOutput(true);
   WiFi.printDiag(Serial);
   delay(10);
+  Serial.println(ESP.getResetReason());
   Serial.print("locsolo_cim: "); Serial.println((uint32_t)((uint32_t *)&locsolo[0]));
   Serial.print("sens_cim: "); Serial.println((uint32_t)((uint32_t *)&sensor));
   read_flash(&sensor,&locsolo[0]);
@@ -75,6 +76,8 @@ void setup() {
   Serial.print(F("free sketch size: "));  Serial.println(ESP.getFreeSketchSpace());
   if(sensor.count>=SENSOR_MEMORY)  sensor.count=0;
   if(locsolo[0].count>=LOCSOL_MEMORY) locsolo[0].count=0;
+  Serial.println(sizeof(locsolo[0]));
+  Serial.println(sizeof(sensor));
 }
    
 void loop() { 
@@ -189,7 +192,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
       sensor.epoch_saved_dt[i]    = sensor.epoch_saved_dt[i-1];
       }
     sensor.epoch_saved_dt[0]    = now() - sensor.epoch_now;
-    sensor.temperature_saved[0] = sensor.temperature_avg*10;
+    sensor.temperature_saved[0] = sensor.temperature_avg*100;
     sensor.humidity_saved[0]    = sensor.humidity_avg;
     sensor.epoch_now=now();
     for(int i=0;i<number;i++){                //Ha a kliens nem jelentkezik be akkor a kliens feszültség és hőmérséklet értékei az előző értéket veszik fel
@@ -372,13 +375,17 @@ void Telnet_print(uint8_t n,...)
 void read_flash(Sensor *sens, struct Locsolo *locsol){
   #if ENABLE_FLASH
     ETS_UART_INTR_DISABLE();
+    spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],sizeof(locsol[0]));
+    spi_flash_read(mem_sector1,(uint32_t *)&locsol[1],sizeof(locsol[1]));
+
+/*    spi_flash_read(mem_sector1,(uint32_t *)&locsol[1],LOCSOLO_NUMBER*sizeof(locsol[1]));
     if(sizeof(locsol[0])>4096){
       spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],4096);
       spi_flash_read(mem_sector1,(uint32_t *)(&locsol[0]+4096),LOCSOLO_NUMBER*sizeof(locsol[0])-4096);
     }else
       {
       spi_flash_read(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
-      } 
+      }*/ 
     delay(10);
     if(sizeof(*sens)>4096){
       spi_flash_read(mem_sector2,(uint32_t *)sens,4096);
@@ -393,7 +400,11 @@ void read_flash(Sensor *sens, struct Locsolo *locsol){
 void write_flash(Sensor *sens, struct Locsolo *locsol){
   #if ENABLE_FLASH
     ETS_UART_INTR_DISABLE();
-    if(sizeof(locsol[0])>4096){
+    spi_flash_erase_sector(mem_sector0>>12);
+    spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
+    spi_flash_erase_sector(mem_sector1>>12);
+    spi_flash_write(mem_sector1,(uint32_t *)&locsol[1],LOCSOLO_NUMBER*sizeof(locsol[1]));
+/*    if(sizeof(locsol[0])>4096){
       spi_flash_erase_sector(mem_sector0>>12);
       spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],4096);
       spi_flash_erase_sector(mem_sector1>>12);
@@ -402,7 +413,7 @@ void write_flash(Sensor *sens, struct Locsolo *locsol){
       {
       spi_flash_erase_sector(mem_sector0>>12);
       spi_flash_write(mem_sector0,(uint32_t *)&locsol[0],LOCSOLO_NUMBER*sizeof(locsol[0]));
-      }
+      }*/
       if(sizeof(*sens)>4096){
         spi_flash_erase_sector(mem_sector2>>12);
         spi_flash_write(mem_sector2,(uint32_t *)sens,4096);
