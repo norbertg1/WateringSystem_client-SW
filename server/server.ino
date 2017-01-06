@@ -62,6 +62,7 @@ void setup() {
   MDNS.begin(host);
   MDNS.addService("http", "tcp", 80);
   MDNS.addService("watering_server", "tcp", 8080);
+  pinMode(DHT_POWER, OUTPUT);
   dht.begin();              // initialize temperature sensor
   udp.begin(localPort);     //NTP time port
   setSyncProvider(getTime);
@@ -152,6 +153,9 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
 {
   float m,n;
   uint8_t i=0;
+  Serial.print("DHT_Reading now");
+  digitalWrite(DHT_POWER, 1);
+  delay(500);
   Serial.print(F("Time: ")); Serial.print(hour()); Serial.print(F(":")); Serial.print(minute()); Serial.print(F(":")); Serial.println(second());
   do{
       m=dht.readHumidity();
@@ -166,6 +170,7 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
       Serial.println(F("reading tempeature"));
       i++;
     }while(isnan(n) && i<3);
+  digitalWrite(DHT_POWER, 0);
   if(!(isnan(m) || isnan(n)))
   {
     sensor.count_dht++;

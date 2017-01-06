@@ -32,7 +32,7 @@
 #define DELAY_TIME                        DELAY_TIME_SECONDS * 1000             //when watering is on, in miliseconds
 #define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
 #define DHT_PIN                           0
-#define DHT_TYPE                          DHT11
+#define DHT_TYPE                          DHT22
 #define LOCSOLO_NUMBER                    2
 #define VALVE_H_BRIDGE_RIGHT_PIN          12
 #define VALVE_H_BRIDGE_LEFT_PIN           14
@@ -100,7 +100,7 @@ void setup() {
   Serial.println(WiFi.localIP());
   MDNS.begin("watering_client1");
   MDNS.addService("watering_server", "tcp", 8080);
-  if(!bmp.begin())  {Serial.println("BMP init failed!");    bmp.setOversampling(4);}
+  if(!bmp.begin())  {Serial.println("BMP init failed!");    bmp.setOversampling(16);}
   else              Serial.println("BMP init success!");
   }
 
@@ -126,16 +126,17 @@ void loop() {
   for(int j=0;j<50;j++) moisture+=analogRead(A0);
   moisture=((moisture/50)/1024.0)*100;
   Serial.print("Moisture:");  Serial.println(moisture);
-  
   double t=0,p=0;
-  for(int i=0;i<10;i++){
+  delay(bmp.startMeasurment());
+  bmp.getTemperatureAndPressure(T,P);
+  for(int i=0;i<5;i++){
     delay(bmp.startMeasurment());
     bmp.getTemperatureAndPressure(T,P);
     t+=T;
     p+=P;
   }
-  T=t/10;
-  P=p/10;
+  T=t/5;
+  P=p/5;
   Serial.print("T=");     Serial.print(T);
   Serial.print("   P=");  Serial.println(P);
 

@@ -31,6 +31,7 @@ extern "C" {
 #define TIME_ZONE 1
 #define DAYLIGHT_SAVING 1
 #define SECS_PER_HOUR 3600
+#define DHT_POWER 12
 #define DHT_PIN 5
 #define DHT_TYPE DHT22
 #define DHT_SENSOR_MEMORY 100     //about at 0 Celsius the readout of DHT22 sensor is fluctuating, the atmenet at 0 Celsius is not continous, with this variable I investigating the problem
