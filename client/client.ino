@@ -17,6 +17,7 @@
 #include <Ticker.h>
 #include <DNSServer.h>
 #include "BMP280.h"
+#include <PubSubClient.h>
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define Debug_Voltage                     0
@@ -40,6 +41,7 @@
 #define VALVE_SWITCH_TWO                  13
 #define ADC_SWITCH                        15
 #define VOLTAGE_TO_DIVIDER                3
+#define MQTT_SERVER                       "192.168.1.101"
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* ssid     = "wifi";
 const char* password = "";
@@ -50,21 +52,26 @@ DHT dht(DHT_PIN,DHT_TYPE);
 ESP8266WebServer server ( 80 );
 Ticker Voltage_Read;            //Install periodic timer that in specified time reads battery voltage. ADC in must be unconnected!!!
 BMP280 bmp;
+WiFiClient espClient;
+PubSubClient client(espClient);
 //ADC_MODE(ADC_VCC);
 
 uint32_t voltage,moisture;
 double T,P;
 uint8_t hum;
 float temp,temperature;
-short locsolo_state=LOW;
+int locsolo_state=LOW, on_off_command=LOW;
 uint16_t  locsolo_duration;
 uint16_t  locsolo_start;
 short locsolo_flag=0;
 short locsolo_number = LOCSOLO_NUMBER - 1;
+char device_name[]="LOCSOLO_SENSOR1";
  
 void valve_turn_on();
 void valve_turn_off();
 int valve_state();
+void mqtt_callback(char* topic, byte* payload, unsigned int length);
+void mqtt_reconnect();
 
 void setup() {
   Serial.begin(115200);
@@ -80,9 +87,11 @@ void setup() {
   if(valve_state) valve_turn_off();
   WiFiManager wifiManager;
   WiFi.mode(WIFI_STA);
- 
+  client.setServer(MQTT_SERVER, 1883);
+  client.setCallback(mqtt_callback);
+
   int i=0;
-  while(i<200){
+  while(i<600){
     i++;
     delay(100);
     if(i%10==0) Serial.print(".");
@@ -124,7 +133,7 @@ void loop() {
   delay(200);
   moisture=0;
   for(int j=0;j<50;j++) moisture+=analogRead(A0);
-  moisture=((moisture/50)/1024.0)*100;
+  moisture=(((float)moisture/50)/1024.0)*100;
   Serial.print("Moisture:");  Serial.println(moisture);
   double t=0,p=0;
   delay(bmp.startMeasurment());
@@ -139,6 +148,28 @@ void loop() {
   P=p/5;
   Serial.print("T=");     Serial.print(T);
   Serial.print("   P=");  Serial.println(P);
+  
+  mqtt_reconnect();
+  char buf_name[50];                                                    //berakni funkcioba szepen mint kell
+  char buf[10];
+  client.loop(); 
+  dtostrf(T,6,1,buf);
+  sprintf (buf_name, "%s%s", device_name,"/TEMPERATURE");
+  client.publish(buf_name, buf);
+  itoa((float)moisture, buf, 10);
+  sprintf (buf_name, "%s%s", device_name,"/MOISTURE");
+  client.publish(buf_name, buf);
+  dtostrf((float)voltage/1000,6,3,buf);
+  sprintf (buf_name, "%s%s", device_name,"/VOLTAGE");
+  client.publish(buf_name, buf);
+  dtostrf(P,6,3,buf);
+  sprintf (buf_name, "%s%s", device_name,"/PRESSURE");
+  client.publish(buf_name, buf);
+  sprintf (buf_name, "%s%s", device_name,"/END");
+  client.publish(buf_name, "0");
+  client.loop();
+  delay(1000);
+  client.loop();
 
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
@@ -187,6 +218,7 @@ void loop() {
       }
   Serial.println(buff_string);
   locsolo_state=(buff_string.substring(6,(buff_string.indexOf("_")))).toInt();
+  locsolo_state=on_off_command;
   if(locsolo_state && (float)voltage/1000>3.0)  valve_turn_on();
   else  valve_turn_off();
   if(locsolo_state == 0){
@@ -197,6 +229,11 @@ void loop() {
     delay(100);
   }
   else   {
+    void mqtt_reconnect();
+    client.loop(); 
+    sprintf (buf_name, "%s%s", device_name,"/ON_OFF_STATE");
+    client.publish(buf_name, "0");
+    client.loop(); 
     Serial.println("delay");
 //  WiFi.disconnect();
 //  WiFi.forceSleepBegin();
@@ -234,5 +271,28 @@ void battery_read(){
 
 int valve_state(){
   return digitalRead(VALVE_SWITCH_TWO);
+}
+
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print(topic); 
+  Serial.print(":");
+  for (int i = 0; i < length; i++) {
+    Serial.println((char)payload[i]);
+  }
+  Serial.println();
+  on_off_command=payload[0]-48;
+}
+
+void mqtt_reconnect() {
+  char buf_name[50];
+  char buf[10];
+  if (!client.connected()) {
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    client.connect(clientId.c_str());
+    sprintf (buf_name, "%s%s", device_name,"/ON_OFF_COMMAND");
+    Serial.print("topic name:"); Serial.println(buf_name);
+    client.subscribe(buf_name); 
+  }
 }
 

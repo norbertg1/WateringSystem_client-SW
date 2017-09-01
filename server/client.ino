@@ -5,9 +5,9 @@ void client_handle()  //Ha kapcsolodik a kliens ez a kódsor fog lefutni
 {
   Serial.println(F("Client connected"));
   String s;
-  locsolo[(server.arg(0)).toInt()].temp[0]    = (server.arg(1)).toInt();
+  locsolo[(server.arg(0)).toInt()].temp[0]    = (server.arg(2)).toInt();
   locsolo[(server.arg(0)).toInt()].humidity   = (server.arg(2)).toInt();
-  locsolo[(server.arg(0)).toInt()].voltage[0] = (server.arg(3)).toInt();
+  locsolo[(server.arg(0)).toInt()].voltage[0] = (server.arg(3)).toInt();  //(server.arg(3)).toInt(); ha voltaget akarok
 
   delay(50);
   s = "state:" + String(locsolo[(server.arg(0)).toInt()].set) + " duration="  + String(locsolo[(server.arg(0)).toInt()].duration) + "_";

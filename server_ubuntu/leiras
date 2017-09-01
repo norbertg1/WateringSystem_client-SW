@@ -1,0 +1,41 @@
+1. csinálsz egy users nevű táblát, ebben lesz ID, EMAIL, PASSWORD mező
+az id az csak egy növekvő sorszám, az email az email címe, a password a hashelt jelszava
+ha valaki regisztrál, akkor ide bekerül egy új sorként
+aztán lesz egy másik tábla, ahova mondjuk a szenzor adatokat tárolod, amiket említettél
+az lesz a 2. tábla, pl. sensor_data, és a következő oszlopai lesznek:
+USER_ID, DATETIME, TEMP, VOLTAGE
+amikor ide illesztesz egy sort, akkor a user_id tartalmazni fogja annak a felhasználónak az ID-jét, akihez tartozik az adat
+
+mysql -u root
+
+Hogyan összepárosítani a locsolókat az emberekkel akik megvették és regisztráltak a weboldalamon?
+1. Minden locsolónak egyedi sorszámot adni amit aztán a weboldalra majd beírhatnak
+2. A locsolókba amikor megadják a wifi kódjukat akkor kérni egy azta username:jelszót amivel regisztráltak az oldalon
+Ez a második lehetőség szimpatikusabb
+
+nem is azthiszem az lesz a legjobb ha előre beprogrmozok egy megváltozhatatlan jelszavat ezekbe az eszközöbe szóval mind felléphet. A userek pedig az oldalon a regisztráció után kiválaszthatják majd hogy hozzá akarnak adni valami device-t magukhoz ehhez kapnak valami kódot amit majd be kell írniuk a device-ba (locsolo, szenzor, stb.) és ez alapján fogom tudni azonosítani mi mihez tartozik
+
+users táblázat:
+USER_ID, EMAIL, PASSWORD
+
+devices táblázat:
+USER_ID, DEVICE_ID
+
+data táblázat:
+DEVICE_ID, TIME, TEMPERATURE, HUMIDITY, MOISTURE, VOLTAGE, ON_OFF_COMMAND, ON_OFF_STATE
+
+Igy párosíthatóak
+Topikok amibe a közzé lehet tenni üzeneteket:
+
++/TEMP
++/HUM
++/MOISTURE
++/VOLTAGE
++/ON_OFF
+
+Ahol a + a kliens egyedi azonosítója lesz, legalább 10 karakter.
+
+Van a mosquito az egy service/mindeféle egyéb jóval megáldott program kliens is lehet.
+Ha a biztonságos csatlakozás a prioritás akkor itt kell beallitani jelszót is. A pythonban futó kód is egy ehhez csatlakozó klien (subscriber és néha publisherÖ).
+
+A weboldalon levő gombok: AUTO MOISTURE, AUTO TEMPERATURE, ON, OFF, IRRIGATION TIME: __ : __, REPEATING: __ h, MOISTURE PERCENT: __ %, RANDOM |_|

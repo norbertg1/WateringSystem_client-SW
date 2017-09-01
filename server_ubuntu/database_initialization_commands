@@ -1,0 +1,37 @@
+#usage: source path/database_initialization_commands
+CREATE DATABASE watering_server;
+USE watering_server;
+CREATE TABLE users (
+	USER_ID 	varchar(12),
+	EMAIL 		varchar(320),
+	PASSWORD 	varchar(64)
+);
+
+CREATE TABLE devices (
+	USER_ID						varchar(12),
+	DEVICE_ID					varchar(20),
+	LAST_ON_TIME				datetime,		#Az utolsó öntözés időpontja
+	ON_OFF_STATE				bool,			#A locsoló állapota
+	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
+	ON_OFF_EDDIG				datetime,		#If ON_OFF_EDDIG > jelenidő ====> elindul az öntözés
+	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
+	IRRIGATION_TIME				time,			#Az öntözés időpontja
+	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
+	IRRIGATION_ON_TEMPERATURE	bool			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
+);
+
+/*A repeat rate megengedett értéke a 24 többszöröse (tehát 1 nap). 
+**Ha negatív értékeke vesz fel az azt jelenti hogy az öntözés véletlenszerűen
+**eltolódhat 24 órával. Tehát -24 ===> 24-48h/öntözés, -48===> 48-72h/öntözés, stb...*/
+
+CREATE TABLE data (
+	DEVICE_ID			varchar(20),
+	EPOCH				int(11),	
+	TEMPERATURE			float,
+	HUMIDITY			smallint,
+	MOISTURE			smallint,
+	PRESSURE			float,
+	VOLTAGE				float,
+	ON_OFF_STATE		bool,
+	TEMPERATURE_POINTS	int
+);

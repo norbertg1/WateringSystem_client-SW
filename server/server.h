@@ -13,6 +13,8 @@
 #include <ESP8266WebServer.h>
 #include <ArduinoOTA.h>
 #include "WiFiManager.h"          //https://github.com/tzapu/WiFiManager
+#include <PubSubClient.h>
+
 
 extern "C" {
 #include "user_interface.h"
@@ -48,6 +50,7 @@ extern "C" {
 #define OTA_WEB_BROWSER 1           //OTA via Web Browser
 #define ENABLE_FLASH 1
 #define TELNET_DEBUG 0
+#define MQTT_SERVER "192.168.1.21"
 //-------Flash memory map
 #define mem_sector0             0x7b000
 #define mem_sector1             0x7c000
@@ -157,6 +160,8 @@ IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 WiFiUDP udp;  // A UDP instance to let us send and receive packets over UDP
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 uint16_t dT;
 
@@ -173,6 +178,7 @@ void loggin_time();
 inline void ota_web_browser();
 inline void telnet_debug();
 void client_logintrack();
+void mqtt_callback(char* topic, byte* payload, unsigned int length);
 
 #if TELNET_DEBUG
   WiFiServer  TelnetDebug(18266);

@@ -62,6 +62,8 @@ void setup() {
   MDNS.begin(host);
   MDNS.addService("http", "tcp", 80);
   MDNS.addService("watering_server", "tcp", 8080);
+  client.setServer(MQTT_SERVER, 1883);
+  client.setCallback(mqtt_callback);
   pinMode(DHT_POWER, OUTPUT);
   dht.begin();              // initialize temperature sensor
   udp.begin(localPort);     //NTP time port
@@ -130,6 +132,11 @@ void loop() {
   }
   server.handleClient();
   auto_ontozes(&locsolo[0],LOCSOLO_NUMBER);
+  if (!client.connected()) {
+    String clientId = "ESP8266Client-";
+    client.connect(clientId.c_str());
+  }
+  client.loop();
 }
  //----------------------------------- loop end------------------------------------------------
 #if  ENABLE_IP
@@ -215,6 +222,12 @@ void DHT_sensor_read(struct Locsolo *locsol,uint8_t number)
     }
     if(sensor.temperature_avg != 0 && sensor.temperature_avg>sensor.Max) {sensor.Max=sensor.temperature_avg; }                              //Napi extrem hőmérsékletek megállapítása
     if(sensor.temperature_avg != 0 && sensor.temperature_avg<sensor.Min) {sensor.Min=sensor.temperature_avg; }
+    char buf[10];
+    dtostrf(sensor.temperature_avg,6,1,buf);
+    client.publish("ESP8266_SERVER/TEMPERATURE", buf);
+    itoa(sensor.humidity_avg, buf, 10);
+    client.publish("ESP8266_SERVER/HUMIDITY", buf);
+    client.publish("ESP8266_SERVER/END", "0");
   }
   Serial.print(F("Writing flash memory:"));                          //FLASH Memory save
   write_flash(&sensor,&locsolo[0]);
@@ -478,4 +491,12 @@ void client_logintrack(){
       message += "\n";
     }
     server.send ( 200 , "text", message );
+}
+
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print(topic);
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
 }

@@ -215,9 +215,9 @@ s+=F("</p><br></body>\n"
        s+=F("];\n var temperature=[");
         if(sensor.temperature_graph) send_data_temperature(sensor.temperature_saved,&sensor.count,&sensor.count,&s);
        s+=F("];\n var humidity=[");
-       delay(100);
-       Serial.println("p:11");
         if(sensor.humidity_graph)  send_data_humidity(sensor.humidity_saved,&sensor.count,&s);
+        server.sendContent(s);
+        s=" ";
       for(i=0;i<LOCSOLO_NUMBER;i++)
        { 
        s +=F("];\nvar "); s+=locsolo[i].Name; s+=F("_temp=[");
@@ -247,7 +247,7 @@ s+=F("</p><br></body>\n"
        "locs3_voltage: locsolo3_voltage[locsolo3_voltage.length-i-1],\n"        
 #endif       
        "});\n"
-       "}\n"
+      "}\n"
        "return chartData;\n"
        "}\n"
        ""
@@ -361,9 +361,11 @@ s+=F("</p><br></body>\n"
         "\"title\": \""); s+=locsolo[2].alias;   s+=F(" volt.");
      s+=F("\",\"valueField\": \"locs3_voltage\"");
 #endif
+  server.sendContent(s);
+  s="0";
 //server.send ( 200 , "text/html", s );
 //Serial.print(F("Server.send,heap size: "));  Serial.println(ESP.getFreeHeap());
-  s+=F("},],"
+  s=F("},],"
     "\n"
    "\"chartScrollbar\": {"
         "\"graph\":\"g1\","

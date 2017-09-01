@@ -1,0 +1,8 @@
+mysql -u root -p
+source path/file_with_commands
+drop tabl talbe_name
+SELECT * FROM devices;
+insert into devices values('anna','anna_locs','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0)
+UPDATE devices SET ON_OFF_COMMAND = 0 where USER_ID = 'anna';
+GRANT ALL PRIVILEGES ON dbTest.* To 'user'@'hostname' IDENTIFIED BY 'password';
+ELECT * FROM data WHERE DEVICE_ID LIKE 'anna_locs7' ORDER BY EPOCH DESC LIMIT 0,1
