@@ -21,16 +21,14 @@
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define Debug_Voltage                     0
-#define SLEEP_TIME_SECONDS                900                        //when watering is off, in seconds
-#define DELAY_TIME_SECONDS                60                              //when watering is on, in seconds
 #define SLEEP_TIME_NO_WIFI_SECONDS        120                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  15                              //The time when valve is switched off in case of broken microswitch or mechanical failure
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
 #define SLEEP_TIME_NO_WIFI                SLEEP_TIME_NO_WIFI_SECONDS * 1000000  //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
-#define SLEEP_TIME                        SLEEP_TIME_SECONDS * 1000000          //when watering is off, in microseconds
-#define DELAY_TIME                        DELAY_TIME_SECONDS * 1000             //when watering is on, in miliseconds
+#define SLEEP_TIME                        sleep_time_seconds * 1000000          //when watering is off, in microseconds
+#define DELAY_TIME                        delay_time_seconds * 1000             //when watering is on, in miliseconds
 #define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
 #define DHT_PIN                           0
 #define DHT_TYPE                          DHT22
@@ -41,7 +39,7 @@
 #define VALVE_SWITCH_TWO                  13
 #define ADC_SWITCH                        15
 #define VOLTAGE_TO_DIVIDER                3
-#define MQTT_SERVER                       "192.168.1.101"
+#define MQTT_SERVER                       "locsol.dynamic-dns.net"
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* ssid     = "wifi";
 const char* password = "";
@@ -54,7 +52,7 @@ Ticker Voltage_Read;            //Install periodic timer that in specified time 
 BMP280 bmp;
 WiFiClient espClient;
 PubSubClient client(espClient);
-//ADC_MODE(ADC_VCC);
+ADC_MODE(ADC_VCC); //only for old design
 
 uint32_t voltage,moisture;
 double T,P;
@@ -65,8 +63,10 @@ uint16_t  locsolo_duration;
 uint16_t  locsolo_start;
 short locsolo_flag=0;
 short locsolo_number = LOCSOLO_NUMBER - 1;
-char device_name[]="LOCSOLO_SENSOR1";
- 
+char device_name[]="locsolo1";
+int sleep_time_seconds=900;                     //when watering is off, in seconds
+int delay_time_seconds=60;                     //when watering is on, in seconds
+
 void valve_turn_on();
 void valve_turn_off();
 int valve_state();
@@ -124,9 +124,9 @@ void loop() {
   digitalWrite(VOLTAGE_TO_DIVIDER, 1);
   delay(200);
   voltage=0;
-  for(int j=0;j<50;j++) voltage+=analogRead(A0);
+  for(int j=0;j<50;j++) voltage+=ESP.getVcc(); // voltage+=analogRead(A0); for new design
   digitalWrite(VOLTAGE_TO_DIVIDER, 0);
-  voltage=(voltage/50)*5.7;                           //5.7 is the resistor divider value
+  voltage=(voltage/50);//*5.7;                           //5.7 is the resistor divider value
   Serial.print("Voltage:");  Serial.println(voltage); 
 
   digitalWrite(ADC_SWITCH, 1);
@@ -165,73 +165,34 @@ void loop() {
   dtostrf(P,6,3,buf);
   sprintf (buf_name, "%s%s", device_name,"/PRESSURE");
   client.publish(buf_name, buf);
-  sprintf (buf_name, "%s%s", device_name,"/END");
+  sprintf (buf_name, "%s%s", device_name,"/READY_FOR_DATA");
   client.publish(buf_name, "0");
   client.loop();
-  delay(1000);
-  client.loop();
-
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  IPAddress IP=WiFi.localIP();
+  for(int i = 0; i<20; i++){
+    delay(50);
+    client.loop();
+  }
   
-  int n=0;
-  while(n == 0 && count < 3){
-    n=MDNS.queryService("watering_server", "tcp");
-    count++;
-  }
-  Serial.print("mDNS search attemps n = "); Serial.println(count);
-  if (n == 0) {
-    Serial.println("no services found");
-    Serial.println("Deep Sleep");  
-    ESP.deepSleep(SLEEP_TIME,WAKE_RF_DEFAULT);
-    delay(100);
-  }
-  else {
-    Serial.print("IP from mDNS:");
-    Serial.println(MDNS.IP(0));
-  }
-  String s="http:";
-  s+="//" + String(MDNS.IP(0)[0]) + "." + String(MDNS.IP(0)[1]) + "." + String(MDNS.IP(0)[2]) + "." + String(MDNS.IP(0)[3]);
-  s+="/client?=" + String(locsolo_number) + "&=" + String(T*100) + "&=" + String(moisture) + "&=" + String(voltage) + "&=" + String(P)+ "&=" + IP[0] + "." + IP[1] + "." + IP[2] + "." + IP[3]; 
-  Serial.println(s);
-  count=0;
-  while(http_code!=200 && count < 3){
-    http.begin(s);
-    http_code=http.GET();
-    count++;
-    if(http_code != 200)  {delay(5000); Serial.println("cannot connect, reconnecting...");}
-  }
-  Serial.print("Connecting attemps to server n = "); Serial.println(count);
-  len = http.getSize();
-  stream = http.getStreamPtr();
-  while(http.connected() && (len > 0 || len == -1)) {
-    size_t size = stream->available();
-    if(size)  {
-      int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-      if(len > 0) len -= c;
-    }
-  }
-  String buff_string;
-  for(int k=0; k<20; k++){
-      buff_string += String((char)buff[k]);
-      }
-  Serial.println(buff_string);
-  locsolo_state=(buff_string.substring(6,(buff_string.indexOf("_")))).toInt();
-  locsolo_state=on_off_command;
-  if(locsolo_state && (float)voltage/1000>3.0)  valve_turn_on();
+  if(on_off_command && (float)voltage/1000>3.0)  valve_turn_on();
   else  valve_turn_off();
-  if(locsolo_state == 0){
+  if(valve_state() == 0){
+    Serial.print("Valve state: "); Serial.println(valve_state());
     Serial.println("Deep Sleep");  
-    http.end();
+    sprintf (buf_name, "%s%s", device_name,"/ON_OFF_STATE");
+    client.publish(buf_name, "0");
+    sprintf (buf_name, "%s%s", device_name,"/END");
+    client.publish(buf_name, "0");
     delay(100);
     ESP.deepSleep(SLEEP_TIME,WAKE_RF_DEFAULT);
     delay(100);
   }
   else   {
-    void mqtt_reconnect();
+    Serial.print("Valve state: "); Serial.println(valve_state());
+    mqtt_reconnect();
     client.loop(); 
     sprintf (buf_name, "%s%s", device_name,"/ON_OFF_STATE");
+    client.publish(buf_name, "1");
+    sprintf (buf_name, "%s%s", device_name,"/END");
     client.publish(buf_name, "0");
     client.loop(); 
     Serial.println("delay");
@@ -262,6 +223,7 @@ void valve_turn_off(){
   while(!digitalRead(VALVE_SWITCH_ONE) && (millis()-t)<MAX_VALVE_SWITCHING_TIME){
     delay(100);
     }
+  if(!valve_state) locsolo_state=LOW;
 }
 
 void battery_read(){
@@ -274,25 +236,43 @@ int valve_state(){
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print(topic); 
-  Serial.print(":");
-  for (int i = 0; i < length; i++) {
-    Serial.println((char)payload[i]);
+  char buff[50];
+  sprintf (buff, "%s%s", device_name,"/ON_OFF_COMMAND");
+  if(!strcmp(topic,buff)) {
+    on_off_command=payload[0]-48;
+    Serial.print("Valve command: ");  Serial.println(on_off_command);
   }
-  Serial.println();
-  on_off_command=payload[0]-48;
+  sprintf (buff, "%s%s", device_name,"/DELAY_TIME");
+  if(!strcmp(topic,buff)) {
+    for (int i = 0; i < length; i++) buff[i]=(char)payload[i];
+    buff[length] = '\n';
+    delay_time_seconds=atoi(buff);
+    Serial.print("Delay time_seconds: "); Serial.println(delay_time_seconds);
+  }
+  sprintf (buff, "%s%s", device_name,"/SLEEP_TIME");
+  if(!strcmp(topic,buff)) {
+    for (int i = 0; i < length; i++) buff[i]=(char)payload[i];
+    buff[length] = '\n';
+    sleep_time_seconds=atoi(buff);
+    Serial.print("Sleep time_seconds: "); Serial.println(sleep_time_seconds);
+  }  
 }
 
 void mqtt_reconnect() {
   char buf_name[50];
-  char buf[10];
   if (!client.connected()) {
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
     client.connect(clientId.c_str());
     sprintf (buf_name, "%s%s", device_name,"/ON_OFF_COMMAND");
-    Serial.print("topic name:"); Serial.println(buf_name);
-    client.subscribe(buf_name); 
+    client.subscribe(buf_name);
+    client.loop(); 
+    sprintf (buf_name, "%s%s", device_name,"/SLEEP_TIME");
+    client.subscribe(buf_name);
+    client.loop(); 
+    sprintf (buf_name, "%s%s", device_name,"/DELAY_TIME");
+    client.subscribe(buf_name);
+    client.loop();
   }
 }
 

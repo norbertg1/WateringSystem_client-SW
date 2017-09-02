@@ -35,3 +35,6 @@ CREATE TABLE data (
 	ON_OFF_STATE		bool,
 	TEMPERATURE_POINTS	int
 );
+
+insert into users values('anna','valaki@valaki.com','titok');
+insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0);
