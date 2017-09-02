@@ -17,7 +17,10 @@ CREATE TABLE devices (
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
-	IRRIGATION_ON_TEMPERATURE	bool			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
+	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
+	DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
+	SLEEP_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e locsolni
+	REMOTE_UPDATE				bool			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
 );
 
 /*A repeat rate megengedett értéke a 24 többszöröse (tehát 1 nap). 
