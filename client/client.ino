@@ -18,11 +18,13 @@
 #include "BMP280.h"
 #include <PubSubClient.h>
 #include <WiFiUdp.h>
+#include <EEPROM.h>
+#include "certificates.h"
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID in seconds
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  15                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  1500                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        180                             //The time out for web update server in seconds 
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -36,22 +38,25 @@
 #define DHT_TYPE                          DHT22
 #define LOCSOLO_NUMBER                    2
 #define VALVE_H_BRIDGE_RIGHT_PIN          12
-#define VALVE_H_BRIDGE_LEFT_PIN           14
-#define VALVE_SWITCH_ONE                  4
+#define VALVE_H_BRIDGE_LEFT_PIN           15
+#define VALVE_SWITCH_ONE                  5
 #define VALVE_SWITCH_TWO                  13
-#define ADC_SWITCH                        15
 #define VOLTAGE_TO_DIVIDER                3
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
+#define FLOWMETER_CALIB_VOLUME            450.0
+#define VOLTAGE_BOOST_EN_ADC_SWITCH       0
+#define FLOWMETER                         2
+#define FLOWMETER_CALIB_VELOCITY          7.5
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
-const char* ssid     = "wifi";
-const char* password = "";
-
 const char* host = "192.168.1.100";
+int mqtt_port= 8883;
+char device_id[127];
+char mqtt_password[128];
 
 DHT dht(DHT_PIN, DHT_TYPE);
 ESP8266WebServer server ( 80 );
 BMP280 bmp;
-WiFiClient espClient;
+WiFiClientSecure espClient;
 PubSubClient client(espClient);
 ADC_MODE(ADC_VCC); //only for old design
 
@@ -65,10 +70,11 @@ uint16_t  locsolo_duration;
 uint16_t  locsolo_start;
 short locsolo_flag = 0;
 short locsolo_number = LOCSOLO_NUMBER - 1;
-char device_name[] = "locsolo1";
 int sleep_time_seconds = 900;                   //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
 bool remote_update = 0;
+int flowmeter_int=0;
+float flowmeter_volume, flowmeter_velocity;
 
 void valve_turn_on();
 void valve_turn_off();
@@ -78,20 +84,27 @@ void mqtt_reconnect();
 void web_update_setup();
 void web_update();
 void setup_wifi();
+void valve_test();
 
 void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.println(ESP.getResetReason());
   Serial.println("\nESP8266_client start!");
-  pinMode(ADC_SWITCH, OUTPUT);
   pinMode(VOLTAGE_TO_DIVIDER, OUTPUT);
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
-  pinMode(VALVE_SWITCH_ONE, INPUT_PULLUP);
-  pinMode(VALVE_SWITCH_TWO, INPUT_PULLUP);
+  pinMode(VOLTAGE_BOOST_EN_ADC_SWITCH, OUTPUT);
+  pinMode(VALVE_SWITCH_ONE, INPUT);
+  pinMode(VALVE_SWITCH_TWO, INPUT);
+  pinMode(FLOWMETER, INPUT);
+  attachInterrupt(digitalPinToInterrupt(FLOWMETER), flow_meter_interrupt, FALLING);
+  digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, LOW);
   if (valve_state) valve_turn_off();
-  client.setServer(MQTT_SERVER, 1883);
+    
+  espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
+  espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+  client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
   setup_wifi();
 
@@ -105,13 +118,22 @@ void setup() {
 }
 
 void loop() {
+  while(0){
+    digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
+    digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
+    while(1){
+      Serial.print("VALVE_SWITCH_ONE: "); Serial.println(digitalRead(VALVE_SWITCH_ONE));
+      Serial.print("VALVE_SWITCH_TWO: "); Serial.println(digitalRead(VALVE_SWITCH_TWO));
+      delay(500);
+    }
+  }
   int r, i, len, http_code = 0;
   HTTPClient http;
   WiFiClient *stream;
   uint8_t buff[128] = { 0 };
   uint8_t mn = 0, count = 0;
 
-  digitalWrite(ADC_SWITCH, 0);
+  //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
   digitalWrite(VOLTAGE_TO_DIVIDER, 1);
   delay(200);
   voltage = 0;
@@ -120,7 +142,7 @@ void loop() {
   voltage = (voltage / 50); //*5.7;                           //5.7 is the resistor divider value
   Serial.print("Voltage:");  Serial.println(voltage);
 
-  digitalWrite(ADC_SWITCH, 1);
+  //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 1);
   delay(200);
   moisture = 0;
   for (int j = 0; j < 50; j++) moisture += analogRead(A0);
@@ -139,24 +161,23 @@ void loop() {
   P = p / 5;
   Serial.print("T=");     Serial.print(T);
   Serial.print("   P=");  Serial.println(P);
-
   mqtt_reconnect();
   char buf_name[50];                                                    //berakni funkcioba szepen mint kell
   char buf[10];
   client.loop();
   dtostrf(T, 6, 1, buf);
-  sprintf (buf_name, "%s%s", device_name, "/TEMPERATURE");
+  sprintf (buf_name, "%s%s", device_id, "/TEMPERATURE");
   client.publish(buf_name, buf);
   itoa((float)moisture, buf, 10);
-  sprintf (buf_name, "%s%s", device_name, "/MOISTURE");
+  sprintf (buf_name, "%s%s", device_id, "/MOISTURE");
   client.publish(buf_name, buf);
   dtostrf((float)voltage / 1000, 6, 3, buf);
-  sprintf (buf_name, "%s%s", device_name, "/VOLTAGE");
+  sprintf (buf_name, "%s%s", device_id, "/VOLTAGE");
   client.publish(buf_name, buf);
   dtostrf(P, 6, 3, buf);
-  sprintf (buf_name, "%s%s", device_name, "/PRESSURE");
+  sprintf (buf_name, "%s%s", device_id, "/PRESSURE");
   client.publish(buf_name, buf);
-  sprintf (buf_name, "%s%s", device_name, "/READY_FOR_DATA");
+  sprintf (buf_name, "%s%s", device_id, "/READY_FOR_DATA");
   client.publish(buf_name, "0");
   client.loop();
   for (int i = 0; i < 20; i++) {
@@ -165,35 +186,53 @@ void loop() {
   }
 
   if (remote_update)  web_update();
-  if (on_off_command && (float)voltage / 1000 > 3.0)  valve_turn_on();
+  if (on_off_command && (float)voltage / 1000 > 3.0 && !(client.state()))  {
+    digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 1);
+    valve_turn_on();
+  }
   else  valve_turn_off();
   if (valve_state() == 0) {
+    digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
     Serial.print("Valve state: "); Serial.println(valve_state());
     Serial.println("Deep Sleep");
-    sprintf (buf_name, "%s%s", device_name, "/ON_OFF_STATE");
+    sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
     client.publish(buf_name, "0");
-    sprintf (buf_name, "%s%s", device_name, "/END");
+    sprintf (buf_name, "%s%s", device_id, "/END");
     client.publish(buf_name, "0");
+    delay(100);
+    client.disconnect();
+    Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
     delay(100);
     ESP.deepSleep(SLEEP_TIME, WAKE_RF_DEFAULT);
     delay(100);
   }
   else   {
     Serial.print("Valve state: "); Serial.println(valve_state());
+    flow_meter_calculate_velocity();
     mqtt_reconnect();
+    char buff_f[10];
     client.loop();
-    sprintf (buf_name, "%s%s", device_name, "/ON_OFF_STATE");
+    sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
     client.publish(buf_name, "1");
-    sprintf (buf_name, "%s%s", device_name, "/END");
+    sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VELOCITY");
+    dtostrf(flowmeter_volume, 6, 2, buff_f);    
+    client.publish(buf_name, buff_f);
+    sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VOLUME");
+    dtostrf(flowmeter_velocity, 6, 2, buff_f);    
+    client.publish(buf_name, buff_f);
+    sprintf (buf_name, "%s%s", device_id, "/END");
     client.publish(buf_name, "0");
     client.loop();
+    delay(100);
+    client.disconnect();
+    Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
     Serial.println("delay");
     //  WiFi.disconnect();
     //  WiFi.forceSleepBegin();
-
     delay(DELAY_TIME);
     //  WiFi.forceSleepWake();
     //  delay(100);
+    on_off_command = 0;
   }
 }
 
@@ -205,6 +244,7 @@ void valve_turn_on() {
     delay(100);
   }
   if (valve_state) locsolo_state = HIGH;
+  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  Serial.println("Error turn on timeout reached");
 }
 
 void valve_turn_off() {
@@ -216,6 +256,7 @@ void valve_turn_off() {
     delay(100);
   }
   if (!valve_state) locsolo_state = LOW;
+  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  Serial.println("Error turn off timeout reached");
 }
 
 void battery_read() {
@@ -229,26 +270,26 @@ int valve_state() {
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   char buff[50];
-  sprintf (buff, "%s%s", device_name, "/ON_OFF_COMMAND");
+  sprintf (buff, "%s%s", device_id, "/ON_OFF_COMMAND");
   if (!strcmp(topic, buff)) {
     on_off_command = payload[0] - 48;
     Serial.print("Valve command: ");  Serial.println(on_off_command);
   }
-  sprintf (buff, "%s%s", device_name, "/DELAY_TIME");
+  sprintf (buff, "%s%s", device_id, "/DELAY_TIME");
   if (!strcmp(topic, buff)) {
     for (int i = 0; i < length; i++) buff[i] = (char)payload[i];
     buff[length] = '\n';
     delay_time_seconds = atoi(buff);
     Serial.print("Delay time_seconds: "); Serial.println(delay_time_seconds);
   }
-  sprintf (buff, "%s%s", device_name, "/SLEEP_TIME");
+  sprintf (buff, "%s%s", device_id, "/SLEEP_TIME");
   if (!strcmp(topic, buff)) {
     for (int i = 0; i < length; i++) buff[i] = (char)payload[i];
     buff[length] = '\n';
     sleep_time_seconds = atoi(buff);
     Serial.print("Sleep time_seconds: "); Serial.println(sleep_time_seconds);
   }
-  sprintf (buff, "%s%s", device_name, "/REMOTE_UPDATE");
+  sprintf (buff, "%s%s", device_id, "/REMOTE_UPDATE");
   if (!strcmp(topic, buff)) {
     remote_update = payload[0] - 48;
     Serial.print("Remote update: "); Serial.println(remote_update);
@@ -259,22 +300,24 @@ void mqtt_reconnect() {
   char buf_name[50];
   if (!client.connected()) {
     String clientId = "ESP8266Client-";
-    clientId += String(random(0xffff), HEX);
-    client.connect(clientId.c_str());
-    sprintf (buf_name, "%s%s", device_name, "/ON_OFF_COMMAND");
+    clientId += String(ESP.getChipId(), HEX);
+    client.connect(clientId.c_str(),"locsolo1" , "titok");
+    //client.connect(clientId.c_str());
+    sprintf (buf_name, "%s%s", device_id, "/ON_OFF_COMMAND");
     client.subscribe(buf_name);
     client.loop();
-    sprintf (buf_name, "%s%s", device_name, "/SLEEP_TIME");
+    sprintf (buf_name, "%s%s", device_id, "/SLEEP_TIME");
     client.subscribe(buf_name);
     client.loop();
-    sprintf (buf_name, "%s%s", device_name, "/DELAY_TIME");
+    sprintf (buf_name, "%s%s", device_id, "/DELAY_TIME");
     client.subscribe(buf_name);
     client.loop();
-    sprintf (buf_name, "%s%s", device_name, "/REMOTE_UPDATE");
+    sprintf (buf_name, "%s%s", device_id, "/REMOTE_UPDATE");
     client.subscribe(buf_name);
     client.loop();
   }
-}
+  Serial.print("The mqtt state is: "); Serial.println(client.state());
+  }
 
 void web_update_setup() {
   //MDNS.begin(host);
@@ -333,8 +376,18 @@ void web_update() {
 }
 
 void setup_wifi() {
+  char soil;
+  EEPROM.begin(512);
+  for(int i=0; i<127;i++) {
+    device_id[i]=EEPROM.read(i);
+    mqtt_password[i]=EEPROM.read(128+i)^EEPROM.read(127); //some cryptography
+  }
   WiFi.mode(WIFI_STA);
+  WiFiManagerParameter custom_device_id("Device_ID", "Device ID", device_id, 255);
+  WiFiManagerParameter custom_mqtt_password("mqtt_password", "mqtt password", mqtt_password, 255);
   WiFiManager wifiManager;
+  wifiManager.addParameter(&custom_device_id);
+  wifiManager.addParameter(&custom_mqtt_password);
   wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
   wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
   if (!wifiManager.autoConnect()) {
@@ -343,6 +396,51 @@ void setup_wifi() {
     ESP.deepSleep(0);
     delay(100);
   }
+  strcpy(device_id, custom_device_id.getValue());
+  strcpy(mqtt_password, custom_mqtt_password.getValue());
+  randomSeed(ESP.getCycleCount());
+  soil=random(0,255);
+  EEPROM.write(127,soil);
+  for(int i=0; i<127;i++) {
+    EEPROM.write(i,device_id[i]);
+    EEPROM.write(128+i,mqtt_password[i]^soil);
+  }
+  EEPROM.commit();
+  EEPROM.end();
+}
+
+void flow_meter_interrupt(){
+  flowmeter_int++;
+  /*
+  float flowmeter_speed;
+  static int last_int_time = 0;
+  static float last_volume = 0;
+  flowmeter_volume = (float)flowmeter_int / FLOWMETER_CALIB_VOLUME;
+  flowmeter_speed = (1000/(millis() - last_int_time) * 7.5);
+  Serial.print("Flowmeter volume: "); Serial.println(flowmeter_volume);
+  Serial.print("Flowmeter speed: "); Serial.println(flowmeter_speed);
+  Serial.print("Flowmeter speed2: "); Serial.println((flowmeter_volume - last_volume) / ((millis() - last_int_time)/1000));
+  last_int_time = millis();
+  last_volume = flowmeter_volume;*/
+}
+
+void flow_meter_calculate_velocity(){
+  static int last_int_time = 0, last_int = 0;;
+
+  flowmeter_volume = (float)flowmeter_int / FLOWMETER_CALIB_VOLUME;
+  flowmeter_velocity = (float)(flowmeter_int - last_int) / (((int)millis() - last_int_time)/1000);
+  last_int_time = millis();
+  last_int = flowmeter_int;
+
+  Serial.print("Flowmeter volume: "); Serial.println(flowmeter_volume);
+  Serial.print("Flowmeter velocity: "); Serial.println(flowmeter_velocity);
+}
+
+void valve_test(){
+    while(1){
+      valve_turn_off();
+      valve_turn_on();
+    }
 }
 /*
 

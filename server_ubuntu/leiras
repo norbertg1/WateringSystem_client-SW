@@ -39,3 +39,5 @@ Van a mosquito az egy service/mindeféle egyéb jóval megáldott program kliens
 Ha a biztonságos csatlakozás a prioritás akkor itt kell beallitani jelszót is. A pythonban futó kód is egy ehhez csatlakozó klien (subscriber és néha publisherÖ).
 
 A weboldalon levő gombok: AUTO MOISTURE, AUTO TEMPERATURE, ON, OFF, IRRIGATION TIME: __ : __, REPEATING: __ h, MOISTURE PERCENT: __ %, RANDOM |_|
+
+PEM phass parse:idfd4s6D4+

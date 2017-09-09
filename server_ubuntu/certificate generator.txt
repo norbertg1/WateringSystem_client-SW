@@ -1,0 +1,20 @@
+openssl req -new -x509 -days 1095 -extensions v3_ca -keyout ca.key -out ca.crt
+
+openssl genrsa -out mosquitto.key 2048
+openssl req -out mosquitto.csr -key mosquitto.key -new
+openssl x509 -req -in mosquitto.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out mosquitto.crt -days 1095	//alairas
+
+openssl genrsa -out esp8266.key 2048
+openssl req -out esp8266.csr -key esp8266.key -new
+openssl x509 -req -in esp8266.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out esp8266.crt -days 1095		//alairas
+
+openssl genrsa -out python.key 2048
+openssl req -out python.csr -key python.key -new
+openssl x509 -req -in python.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out python.crt -days 1095		//alairas
+
+
+mkdir certificates
+openssl x509 -in esp8266.crt -out certificates/esp8266.bin.crt -outform DER
+openssl rsa -in esp8266.key -out certificates/esp8266.bin.key -outform DER
+xxd -i certificates/esp8266.*
+cat certificates/esp8266.* > certificates.h
