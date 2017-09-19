@@ -13,7 +13,6 @@ CREATE TABLE devices (
 	LAST_ON_TIME				datetime,		#Az utolsó öntözés időpontja
 	ON_OFF_STATE				bool,			#A locsoló állapota
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
-	ON_OFF_EDDIG				datetime,		#If ON_OFF_EDDIG > jelenidő ====> elindul az öntözés
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
@@ -29,7 +28,7 @@ CREATE TABLE devices (
 
 CREATE TABLE data (
 	DEVICE_ID			varchar(20),
-	EPOCH				int(11),	
+	LAST_LOGIN			datetime,
 	TEMPERATURE			float,
 	HUMIDITY			smallint,
 	MOISTURE			smallint,
@@ -41,3 +40,11 @@ CREATE TABLE data (
 
 insert into users values('anna','valaki@valaki.com','titok');
 insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0);
+
+CREATE TABLE scheduled_irrigation (
+	DEVICE_ID			varchar(20),
+	ON_TIME				time,	
+	ON_TIME_LENGHT		int,
+	DONE_FOR_TODAY		bool,
+	TODAY				int
+);

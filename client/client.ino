@@ -24,8 +24,9 @@
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID in seconds
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  1500                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
-#define WEB_UPDATE_TIMEOUT_SECONDS        180                             //The time out for web update server in seconds 
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  1500                            //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
+#define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
+#define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -47,6 +48,7 @@
 #define VOLTAGE_BOOST_EN_ADC_SWITCH       0
 #define FLOWMETER                         2
 #define FLOWMETER_CALIB_VELOCITY          7.5
+#define MINIMUM_VALVE_OPEN_VOLTAGE        3.0
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* host = "192.168.1.100";
 int mqtt_port= 8883;
@@ -97,9 +99,9 @@ void setup() {
   pinMode(VOLTAGE_BOOST_EN_ADC_SWITCH, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT);
   pinMode(VALVE_SWITCH_TWO, INPUT);
-  pinMode(FLOWMETER, INPUT);
-  attachInterrupt(digitalPinToInterrupt(FLOWMETER), flow_meter_interrupt, FALLING);
-  digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, LOW);
+  //pinMode(FLOWMETER, INPUT);
+  //attachInterrupt(digitalPinToInterrupt(FLOWMETER), flow_meter_interrupt, FALLING);
+  //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, LOW);
   if (valve_state) valve_turn_off();
     
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
@@ -186,17 +188,21 @@ void loop() {
   }
 
   if (remote_update)  web_update();
-  if (on_off_command && (float)voltage / 1000 > 3.0 && !(client.state()))  {
+  if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  {
     digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 1);
     valve_turn_on();
   }
   else  valve_turn_off();
   if (valve_state() == 0) {
+    char buff_f[10];
     digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
     Serial.print("Valve state: "); Serial.println(valve_state());
     Serial.println("Deep Sleep");
     sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
     client.publish(buf_name, "0");
+    sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
+    sprintf(buff_f, "%d", millis()/1000);
+    client.publish(buf_name, buff_f);
     sprintf (buf_name, "%s%s", device_id, "/END");
     client.publish(buf_name, "0");
     delay(100);
@@ -219,6 +225,9 @@ void loop() {
     client.publish(buf_name, buff_f);
     sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VOLUME");
     dtostrf(flowmeter_velocity, 6, 2, buff_f);    
+    client.publish(buf_name, buff_f);    
+    sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
+    sprintf(buff_f, "%d", millis()/1000);
     client.publish(buf_name, buff_f);
     sprintf (buf_name, "%s%s", device_id, "/END");
     client.publish(buf_name, "0");
@@ -392,8 +401,9 @@ void setup_wifi() {
   wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
   if (!wifiManager.autoConnect()) {
     Serial.println("Failed to connect and hit timeout. Entering deep sleep!");
+    valve_turn_off();
     delay(50);
-    ESP.deepSleep(0);
+    ESP.deepSleep(SLEEP_TIME_NO_WIFI);
     delay(100);
   }
   strcpy(device_id, custom_device_id.getValue());
