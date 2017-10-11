@@ -15,6 +15,7 @@ CREATE TABLE devices (
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
+	IRRIGATION_LENGHT			int,			#ilyen hosszan tartson az öntözés	
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
 	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
 	DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva

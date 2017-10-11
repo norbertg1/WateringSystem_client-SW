@@ -99,11 +99,16 @@ def set_delay_sleep_times(device_id):
     client.publish(device_id + "/REMOTE_UPDATE", "1")
     
 def read_command_from_database(device_id):
-    collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
-    if(collumn['ON_COMMAND']): return 1
+    if(irigation_on_off(device_id)): return 1
     if(scheduled_irrigation(device_id)): return 1
+    if(repeated_irrigation(device_id)): return 1
     #folytatni
     return 0
+
+def irigation_on_off(device_id):
+    collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
+    if(collumn['ON_COMMAND']): return 1
+    else: return 0 
 
 def scheduled_irrigation(device_id):
     collumn=scheduled_irrigation_table.select(scheduled_irrigation_table.c.DEVICE_ID == device_id).execute()
@@ -117,6 +122,10 @@ def scheduled_irrigation(device_id):
             data[device_id].off_time = (datetime.datetime.combine(datetime.date.today(), data[device_id].on_time.time()) + datetime.timedelta(minutes=on_time_lenght))
             break
     if data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:    return 1
+    return 0
+
+def repeated_irrigation(device_id):
+    collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
     return 0
 
 def on_disconnect():
@@ -134,7 +143,7 @@ mqttc.loop_start()
 
 today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
 while 1:
-    if datetime.datetime.now().day is not today and data.values() == []: #ha már elmúlt éjfél
+    if datetime.datetime.now().day is not today: #ha már elmúlt éjfél
         conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0")
         today=datetime.datetime.now().day
 
