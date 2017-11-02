@@ -87,6 +87,7 @@ void web_update_setup();
 void web_update();
 void setup_wifi();
 void valve_test();
+void flow_meter_calculate_velocity();
 
 void setup() {
   Serial.begin(115200);
@@ -164,29 +165,30 @@ void loop() {
   Serial.print("T=");     Serial.print(T);
   Serial.print("   P=");  Serial.println(P);
   mqtt_reconnect();
-  char buf_name[50];                                                    //berakni funkcioba szepen mint kell
-  char buf[10];
-  client.loop();
-  dtostrf(T, 6, 1, buf);
-  sprintf (buf_name, "%s%s", device_id, "/TEMPERATURE");
-  client.publish(buf_name, buf);
-  itoa((float)moisture, buf, 10);
-  sprintf (buf_name, "%s%s", device_id, "/MOISTURE");
-  client.publish(buf_name, buf);
-  dtostrf((float)voltage / 1000, 6, 3, buf);
-  sprintf (buf_name, "%s%s", device_id, "/VOLTAGE");
-  client.publish(buf_name, buf);
-  dtostrf(P, 6, 3, buf);
-  sprintf (buf_name, "%s%s", device_id, "/PRESSURE");
-  client.publish(buf_name, buf);
-  sprintf (buf_name, "%s%s", device_id, "/READY_FOR_DATA");
-  client.publish(buf_name, "0");
-  client.loop();
-  for (int i = 0; i < 20; i++) {
-    delay(50);
+  if (!client.connected()) {
+    char buf_name[50];                                                    //berakni funkcioba szepen mint kell
+    char buf[10];
     client.loop();
+    dtostrf(T, 6, 1, buf);
+    sprintf (buf_name, "%s%s", device_id, "/TEMPERATURE");
+    client.publish(buf_name, buf);
+    itoa((float)moisture, buf, 10);
+    sprintf (buf_name, "%s%s", device_id, "/MOISTURE");
+    client.publish(buf_name, buf);
+    dtostrf((float)voltage / 1000, 6, 3, buf);
+    sprintf (buf_name, "%s%s", device_id, "/VOLTAGE");
+    client.publish(buf_name, buf);
+    dtostrf(P, 6, 3, buf);
+    sprintf (buf_name, "%s%s", device_id, "/PRESSURE");
+    client.publish(buf_name, buf);
+    sprintf (buf_name, "%s%s", device_id, "/READY_FOR_DATA");
+    client.publish(buf_name, "0");
+    client.loop();
+    for (int i = 0; i < 20; i++) {
+      delay(50);
+      client.loop();
+    }
   }
-
   if (remote_update)  web_update();
   if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  {
     digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 1);
@@ -194,19 +196,22 @@ void loop() {
   }
   else  valve_turn_off();
   if (valve_state() == 0) {
-    char buff_f[10];
-    digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
-    Serial.print("Valve state: "); Serial.println(valve_state());
-    Serial.println("Deep Sleep");
-    sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
-    client.publish(buf_name, "0");
-    sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
-    sprintf(buff_f, "%d", millis()/1000);
-    client.publish(buf_name, buff_f);
-    sprintf (buf_name, "%s%s", device_id, "/END");
-    client.publish(buf_name, "0");
-    delay(100);
-    client.disconnect();
+    if (!client.connected()) {
+      char buff_f[10];
+      char buf_name[50];
+      digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
+      Serial.print("Valve state: "); Serial.println(valve_state());
+      Serial.println("Deep Sleep");
+      sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
+      client.publish(buf_name, "0");
+      sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
+      sprintf(buff_f, "%d", millis()/1000);
+      client.publish(buf_name, buff_f);
+      sprintf (buf_name, "%s%s", device_id, "/END");
+      client.publish(buf_name, "0");
+      delay(100);
+      client.disconnect();
+    }
     Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
     delay(100);
     ESP.deepSleep(SLEEP_TIME, WAKE_RF_DEFAULT);
@@ -216,24 +221,27 @@ void loop() {
     Serial.print("Valve state: "); Serial.println(valve_state());
     flow_meter_calculate_velocity();
     mqtt_reconnect();
-    char buff_f[10];
-    client.loop();
-    sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
-    client.publish(buf_name, "1");
-    sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VELOCITY");
-    dtostrf(flowmeter_volume, 6, 2, buff_f);    
-    client.publish(buf_name, buff_f);
-    sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VOLUME");
-    dtostrf(flowmeter_velocity, 6, 2, buff_f);    
-    client.publish(buf_name, buff_f);    
-    sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
-    sprintf(buff_f, "%d", millis()/1000);
-    client.publish(buf_name, buff_f);
-    sprintf (buf_name, "%s%s", device_id, "/END");
-    client.publish(buf_name, "0");
-    client.loop();
-    delay(100);
-    client.disconnect();
+    if (!client.connected()) {
+      char buff_f[10];
+      char buf_name[50];
+      client.loop();
+      sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
+      client.publish(buf_name, "1");
+      sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VELOCITY");
+      dtostrf(flowmeter_volume, 6, 2, buff_f);    
+      client.publish(buf_name, buff_f);
+      sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VOLUME");
+      dtostrf(flowmeter_velocity, 6, 2, buff_f);    
+      client.publish(buf_name, buff_f);    
+      sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
+      sprintf(buff_f, "%d", millis()/1000);
+      client.publish(buf_name, buff_f);
+      sprintf (buf_name, "%s%s", device_id, "/END");
+      client.publish(buf_name, "0");
+      client.loop();
+      delay(100);
+      client.disconnect();
+    }
     Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
     Serial.println("delay");
     //  WiFi.disconnect();
