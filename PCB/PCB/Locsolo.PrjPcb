@@ -203,6 +203,10 @@ DItemRevisionGUID=
 Path=..\..\AD13\Library\*.*
 IncludeSubFolders=1
 
+[SearchPath2]
+Path=C:\Users\Public\Documents\Altium\AD13\Library\*.*
+IncludeSubFolders=1
+
 [Configuration1]
 Name=Default Configuration
 ParameterCount=0
