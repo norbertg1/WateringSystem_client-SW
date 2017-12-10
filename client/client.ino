@@ -1,7 +1,6 @@
 /*
    This program login into ESP8266_locsolo_server. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature.
    When A0 is HIGH ESP8266 loggin in to the serve every 30seconds, if it is LOW goind to deep sleep for 300seconds
-   Created on 2015.08-2015.11
    by Norbi
 
    3V alatt ne nyisson ki a szelep, de ha nyitva van akkor legyen egy deltaU feszĂĽltsĂ©g ami alatt csukodk be (pl 2.9V)
@@ -24,7 +23,7 @@
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID in seconds
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  1500                            //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  40                            //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
@@ -49,6 +48,7 @@
 #define FLOWMETER                         2
 #define FLOWMETER_CALIB_VELOCITY          7.5
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.0
+#define SZELEP                            0
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* host = "192.168.1.100";
 int mqtt_port= 8883;
@@ -88,12 +88,15 @@ void web_update();
 void setup_wifi();
 void valve_test();
 void flow_meter_calculate_velocity();
+void get_TempPressure();
+void go_sleep(long long int microseconds);
 
 void setup() {
   Serial.begin(115200);
-  delay(100);
+  delay(10);
   Serial.println(ESP.getResetReason());
   Serial.println("\nESP8266_client start!");
+  get_TempPressure();
   pinMode(VOLTAGE_TO_DIVIDER, OUTPUT);
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
@@ -104,20 +107,16 @@ void setup() {
   //attachInterrupt(digitalPinToInterrupt(FLOWMETER), flow_meter_interrupt, FALLING);
   //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, LOW);
   if (valve_state) valve_turn_off();
-    
+  Serial.println("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
   espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+  Serial.println("Setting up mqtt callback, wifi");
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
   setup_wifi();
 
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
-  if (!bmp.begin())  {
-    Serial.println("BMP init failed!");
-    bmp.setOversampling(16);
-  }
-  else Serial.println("BMP init success!");
 }
 
 void loop() {
@@ -151,21 +150,12 @@ void loop() {
   for (int j = 0; j < 50; j++) moisture += analogRead(A0);
   moisture = (((float)moisture / 50) / 1024.0) * 100;
   Serial.print("Moisture:");  Serial.println(moisture);
-  double t = 0, p = 0;
-  delay(bmp.startMeasurment());
-  bmp.getTemperatureAndPressure(T, P);
-  for (int i = 0; i < 5; i++) {
-    delay(bmp.startMeasurment());
-    bmp.getTemperatureAndPressure(T, P);
-    t += T;
-    p += P;
-  }
-  T = t / 5;
-  P = p / 5;
-  Serial.print("T=");     Serial.print(T);
-  Serial.print("   P=");  Serial.println(P);
-  mqtt_reconnect();
-  if (!client.connected()) {
+  mqtt_reconnect(); 
+  Serial.println(client.state());  
+  Serial.println(client.connected());  
+
+  Serial.println("mqtt_reconnect");
+  if (client.connected()) {
     char buf_name[50];                                                    //berakni funkcioba szepen mint kell
     char buf[10];
     client.loop();
@@ -189,6 +179,7 @@ void loop() {
       client.loop();
     }
   }
+  Serial.println("Setting up webupdate if set");
   if (remote_update)  web_update();
   if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  {
     digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 1);
@@ -196,7 +187,7 @@ void loop() {
   }
   else  valve_turn_off();
   if (valve_state() == 0) {
-    if (!client.connected()) {
+    if (client.connected()) {
       char buff_f[10];
       char buf_name[50];
       digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
@@ -212,16 +203,14 @@ void loop() {
       delay(100);
       client.disconnect();
     }
-    Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
-    delay(100);
-    ESP.deepSleep(SLEEP_TIME, WAKE_RF_DEFAULT);
-    delay(100);
+    go_sleep(SLEEP_TIME);
+    
   }
   else   {
     Serial.print("Valve state: "); Serial.println(valve_state());
     flow_meter_calculate_velocity();
     mqtt_reconnect();
-    if (!client.connected()) {
+    if (client.connected()) {
       char buff_f[10];
       char buf_name[50];
       client.loop();
@@ -244,7 +233,7 @@ void loop() {
     }
     Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
     Serial.println("delay");
-    //  WiFi.disconnect();
+    // WiFi.disconnect();
     //  WiFi.forceSleepBegin();
     delay(DELAY_TIME);
     //  WiFi.forceSleepWake();
@@ -265,6 +254,7 @@ void valve_turn_on() {
 }
 
 void valve_turn_off() {
+#if SZELEP  
   uint16_t cnt = 0;
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
@@ -274,6 +264,7 @@ void valve_turn_off() {
   }
   if (!valve_state) locsolo_state = LOW;
   if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  Serial.println("Error turn off timeout reached");
+#endif
 }
 
 void battery_read() {
@@ -282,7 +273,11 @@ void battery_read() {
 }
 
 int valve_state() {
+#if SZELEP  
   return digitalRead(VALVE_SWITCH_TWO);
+#else
+  return 0;
+#endif
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
@@ -315,10 +310,10 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 
 void mqtt_reconnect() {
   char buf_name[50];
-  if (!client.connected()) {
+  if(!client.connected()) {
     String clientId = "ESP8266Client-";
     clientId += String(ESP.getChipId(), HEX);
-    client.connect(clientId.c_str(),"locsolo1" , "titok");
+    client.connect(clientId.c_str(),"szenzor1" , "szenzor1");
     //client.connect(clientId.c_str());
     sprintf (buf_name, "%s%s", device_id, "/ON_OFF_COMMAND");
     client.subscribe(buf_name);
@@ -334,6 +329,14 @@ void mqtt_reconnect() {
     client.loop();
   }
   Serial.print("The mqtt state is: "); Serial.println(client.state());
+  /*if(!(client.state() == 0)){
+    Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
+    espClient.stop();
+    delay(100);
+    Serial.print("ittvan: ");
+    ESP.deepSleep(SLEEP_TIME, WAKE_RF_DEFAULT);
+    delay(100);
+    }*/
   }
 
 void web_update_setup() {
@@ -393,6 +396,8 @@ void web_update() {
 }
 
 void setup_wifi() {
+
+  Serial.println("Setting up wifi");
   char soil;
   EEPROM.begin(512);
   for(int i=0; i<127;i++) {
@@ -410,9 +415,7 @@ void setup_wifi() {
   if (!wifiManager.autoConnect()) {
     Serial.println("Failed to connect and hit timeout. Entering deep sleep!");
     valve_turn_off();
-    delay(50);
-    ESP.deepSleep(SLEEP_TIME_NO_WIFI);
-    delay(100);
+    go_sleep(SLEEP_TIME_NO_WIFI);
   }
   strcpy(device_id, custom_device_id.getValue());
   strcpy(mqtt_password, custom_mqtt_password.getValue());
@@ -425,6 +428,8 @@ void setup_wifi() {
   }
   EEPROM.commit();
   EEPROM.end();
+  Serial.println(device_id);
+  Serial.println(mqtt_password);
 }
 
 void flow_meter_interrupt(){
@@ -460,24 +465,34 @@ void valve_test(){
       valve_turn_on();
     }
 }
-/*
 
-  WiFi.mode(WIFI_STA);
-  WiFiManager wifiManager;
-  wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
+void get_TempPressure(){
+  if (!bmp.begin())  {
+    Serial.println("BMP init failed!");
+    bmp.setOversampling(16);
+  }
+  else Serial.println("BMP init success!");
+  double t = 0, p = 0;
+  for (int i = 0; i < 5; i++) {
+    delay(bmp.startMeasurment());
+    bmp.getTemperatureAndPressure(T, P);
+    t += T;
+    p += P;
+  }
+  T = t / 5;
+  P = p / 5;
+  Serial.print("T=");     Serial.print(T);
+  Serial.print("   P=");  Serial.println(P);
+}
 
-  int i=0;
-  while(i<600){
-    i++;
-    delay(100);
-    if(i%10==0) Serial.print(".");
-    if((WiFi.status()==WL_CONNECTED)) break;
-  }
-  if(!(WiFi.status()==WL_CONNECTED) && !wifiManager.startConfigPortal("ESP8266_client")){
-    Serial.println("Not connected to WiFi");
-    Serial.println("Deep Sleep");
-    ESP.deepSleep(0);
-  }
-  }
-*/
+void go_sleep(long long int microseconds){
+  valve_turn_off();
+  //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
+  espClient.stop();
+  Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
+  Serial.print("Entering in deep sleep for: "); Serial.print(int(microseconds/1000000)); Serial.println(" s");
+  delay(1000);
+  ESP.deepSleep(microseconds);
+  delay(100);
+}
 

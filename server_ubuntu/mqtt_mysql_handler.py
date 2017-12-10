@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+#!/usr/bin/env python
+
+
+import sys; sys.path.append('/home/odroid/.local/lib/python2.7/site-packages')
 import MySQLdb
 import paho.mqtt.client as mqtt
 import datetime
@@ -7,6 +11,12 @@ from sqlalchemy import *
 from sqlalchemy.orm import *
 import ssl
 ssl.match_hostname = lambda cert, hostname: True
+from tendo import singleton
+import threading 
+
+print "MQTT_MySQL handler starting. ",
+me = singleton.SingleInstance() # will sys.exit(-1) if other instance is running
+
 
 engine = create_engine("mysql+mysqldb://root:1234@localhost/watering_server?host=localhost?port=3306")
 conn = engine.connect()
@@ -58,6 +68,7 @@ def on_connect(client, userdata, rc, m):
     client.subscribe("+/END")
     
 def on_message(client, userdata, msg):
+    print "messeage"
     device_id=msg.topic[0:(msg.topic).find("/")]
     variable_type=msg.topic[(msg.topic).find("/")+1:len(msg.topic)]
     handle_database(device_id, variable_type, msg.payload)
@@ -74,7 +85,7 @@ def handle_database(device_id, variable_type, value):
         if(variable_type == 'MOISTURE'):        data[device_id].MOISTURE = value
         if(variable_type == 'PRESSURE'):        data[device_id].PRESSURE = value
         if(variable_type == 'VOLTAGE'):         data[device_id].VOLTAGE = value
-        if(variable_type == 'READY_FOR_DATA'):  send_message_to_device(device_id)
+        if(variable_type == 'READY_FOR_DATA'):  send_message_to_device(device_id)            
         if(variable_type == 'ON_OFF_STATE'):                #ha be volt kapcsolva a locsolás (amit az adatbázisból olvasok ki) és most olyan érték jön,
             collumn = data_table.select(data_table.c.DEVICE_ID == device_id).order_by(desc('LAST_LOGIN')).execute().fetchone()
             if collumn is not None:
@@ -86,35 +97,30 @@ def handle_database(device_id, variable_type, value):
             data[device_id].save_database_data()
             if not data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:
                 del data[device_id];   #csak akkor ha nem megy előre beprogramozott öntözés
-                print "deleted"
 
 def send_message_to_device(device_id): #send on_off command
     on_off=read_command_from_database(device_id)
     client.publish(device_id + "/ON_OFF_COMMAND", on_off)
     print 'device', device_id, ':', on_off
+    set_delay_sleep_times(device_id)
 
 def set_delay_sleep_times(device_id):
-    client.publish(device_id + "/SLEEP_TIME", "60")
-    client.publish(device_id + "/DELAY_TIME", "900")
-    client.publish(device_id + "/REMOTE_UPDATE", "1")
+    collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
+    #print collumn['SLEEP_TIME']
+    client.publish(device_id + "/SLEEP_TIME", str(collumn['SLEEP_TIME']))
+    client.publish(device_id + "/DELAY_TIME", str(collumn['DELAY_TIME']))
+    client.publish(device_id + "/REMOTE_UPDATE", str(collumn['REMOTE_UPDATE']))
     
 def read_command_from_database(device_id):
-    if(irigation_on_off(device_id)): return 1
-    if(scheduled_irrigation(device_id)): return 1
-    if(repeated_irrigation(device_id)): return 1
-    #folytatni
-    return 0
-
-def irigation_on_off(device_id):
     collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
     if(collumn['ON_COMMAND']): return 1
-    else: return 0 
+    if(scheduled_irrigation(device_id)): return 1
+    #folytatni ha ez a funkcio 1est ad vissza az bekapcsolja az adott eszközön az öntözést
+    return 0
 
 def scheduled_irrigation(device_id):
     collumn=scheduled_irrigation_table.select(scheduled_irrigation_table.c.DEVICE_ID == device_id).execute()
     for row in collumn:
-        print "percek:"
-        print (datetime.datetime.now()-datetime.datetime.combine(datetime.date.today(), row['ON_TIME'])).total_seconds()/60
         if 0 < (datetime.datetime.now()-datetime.datetime.combine(datetime.date.today(), row['ON_TIME'])).total_seconds()/60 < 100 and not row['DONE_FOR_TODAY']:
             conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 1" + " where DEVICE_ID = \'" + device_id + "\' AND ON_TIME = \'" + str(row['ON_TIME']) + "\'")
             data[device_id].on_time = datetime.datetime.now()
@@ -124,36 +130,41 @@ def scheduled_irrigation(device_id):
     if data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:    return 1
     return 0
 
-def repeated_irrigation(device_id):
-    collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
-    return 0
-
 def on_disconnect():
     print ('client disconnected')
 
-client = mqtt.Client()
+print "Server is starting in 10s"
+time.sleep(10)
+client = mqtt.Client(client_id="MQTT MYSQL Handler")
 client.username_pw_set("server",password = "wi7Di5.s+s*")
-client.tls_set("ca.crt",certfile="python.crt",keyfile="python.key")
+client.tls_set("/home/odroid/Desktop/server/ca.crt",certfile="/home/odroid/Desktop/server/python.crt",keyfile="/home/odroid/Desktop/server/python.key")
 client.on_connect = on_connect
 client.on_message = on_message
 client.on_disconnect = on_disconnect
 client.connect("localhost",8883)
-client.loop_forever()
-mqttc.loop_start()
+#client.loop_forever()
+client.loop_start()
 
-today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
+"""today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
 while 1:
-    if datetime.datetime.now().day is not today: #ha már elmúlt éjfél
+    if datetime.datetime.now().day is not today and data.values() == []: #ha már elmúlt éjfél
         conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0")
-        today=datetime.datetime.now().day
+        today=datetime.datetime.now().day"""
 
-#bonyolultabb és erőforrásigényesebb, de így az éjszakán átnyúló öntözés is pontos    
-collumn=scheduled_irrigation_table.select(scheduled_irrigation_table.c.DEVICE_ID == device_id).execute()
-for row in collumn:
-    if data.has_key(row["DEVICE_ID"]):
-        if not data[row["DEVICE_ID"]].on_time < datetime.datetime.now() < data[row["DEVICE_ID"]].off_time and not row["TODAY"] == datetime.datetime.now().day:
-            conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0" + "where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-            conn.execute("UPDATE scheduled_irrigation SET TODAY = " + datetime.datetime.now().day + "where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-    elif not row["TODAY"] == datetime.datetime.now().day:
-        conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0" + "where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-        conn.execute("UPDATE scheduled_irrigation SET TODAY = " + datetime.datetime.now().day + "where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+#bonyolultabb és erőforrásigényesebb, de így az éjszakán átnyúló öntözés is pontos azthiszem   
+while 1:
+    print "server is alive" 
+    print threading.activeCount()
+    collumn=scheduled_irrigation_table.select().execute()
+    for row in collumn:
+        if data.has_key(row["DEVICE_ID"]):
+            if not data[row["DEVICE_ID"]].on_time < datetime.datetime.now() < data[row["DEVICE_ID"]].off_time and not row["TODAY"] == datetime.datetime.now().day:
+                conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0" + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+                conn.execute("UPDATE scheduled_irrigation SET TODAY = " + str(datetime.datetime.now().day) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+        elif not row["TODAY"] == datetime.datetime.now().day:
+            conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0" + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            conn.execute("UPDATE scheduled_irrigation SET TODAY = " + str(datetime.datetime.now().day) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+        print "valami"  
+    print threading.activeCount()    
+    if threading.activeCount() < 2: break #mert ezesetben a mosquito szerverhez kapcsolódó szál valószínűleg leállt
+    time.sleep(10)

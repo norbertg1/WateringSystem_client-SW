@@ -3,7 +3,13 @@ source path/file_with_commands
 drop table talbe_name
 SELECT * FROM devices;
 insert into devices values('anna','anna_locs','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0)
-UPDATE devices SET ON_OFF_COMMAND = 0 where USER_ID = 'anna';
+UPDATE devices SET ON_COMMAND = 0 where USER_ID = 'anna';
 GRANT ALL PRIVILEGES ON dbTest.* To 'user'@'hostname' IDENTIFIED BY 'password';
 SELECT * FROM data WHERE DEVICE_ID LIKE 'anna_locs7' ORDER BY EPOCH DESC LIMIT 0,1
 mosquitto -c /etc/mosquitto/conf.d/default.conf
+
+ehhez nezzem meg ezt a fajlt: /home/odroid/Desktop/server/mosquitto/conf.d/default.conf
+mosquitto_sub -h 192.168.1.14 -t +/+ -p 1883 -u "anna" --pw "titok"
+
+
+szenzor1:szenzor1
