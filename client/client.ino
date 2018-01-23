@@ -51,6 +51,8 @@
 #define SZELEP                            0
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 const char* host = "192.168.1.100";
+const char* device_name = "szenzor1";
+const char* device_passwd = "szenzor1";
 int mqtt_port= 8883;
 char device_id[127];
 char mqtt_password[128];
@@ -313,7 +315,7 @@ void mqtt_reconnect() {
   if(!client.connected()) {
     String clientId = "ESP8266Client-";
     clientId += String(ESP.getChipId(), HEX);
-    client.connect(clientId.c_str(),"szenzor1" , "szenzor1");
+    client.connect(clientId.c_str(),device_name , device_passwd);
     //client.connect(clientId.c_str());
     sprintf (buf_name, "%s%s", device_id, "/ON_OFF_COMMAND");
     client.subscribe(buf_name);
@@ -412,7 +414,7 @@ void setup_wifi() {
   wifiManager.addParameter(&custom_mqtt_password);
   wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
   wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
-  if (!wifiManager.autoConnect()) {
+  if (!wifiManager.autoConnect(device_name)) {
     Serial.println("Failed to connect and hit timeout. Entering deep sleep!");
     valve_turn_off();
     go_sleep(SLEEP_TIME_NO_WIFI);
