@@ -1,3 +1,4 @@
+ssh -Y odroid@locsol.dynamic-dns.net
 mysql -u root -p
 source path/file_with_commands
 drop table talbe_name
@@ -11,5 +12,9 @@ mosquitto -c /etc/mosquitto/conf.d/default.conf
 ehhez nezzem meg ezt a fajlt: /home/odroid/Desktop/server/mosquitto/conf.d/default.conf
 mosquitto_sub -h 192.168.1.14 -t +/+ -p 1883 -u "anna" --pw "titok"
 
+ALTER TABLE Products ADD LastUpdate  varchar(200) NULL berak pluszba sort
+CREATE USER 'webserver_agent'@'localhost' IDENTIFIED BY 'xxx';
+drop user 'webserver_agent'@'localhost';
+GRANT ALL PRIVILEGES ON watering_server.* TO 'webserver_agent'@'localhost';
 
 szenzor1:szenzor1

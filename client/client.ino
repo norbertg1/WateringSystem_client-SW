@@ -41,7 +41,10 @@
 #define VALVE_H_BRIDGE_LEFT_PIN           15
 #define VALVE_SWITCH_ONE                  5
 #define VALVE_SWITCH_TWO                  13
-#define VOLTAGE_TO_DIVIDER                3
+#define GPIO15                    15
+#define RXD_VCC_PIN                       3
+#define SCL                               5
+#define SDA                               2
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
 #define FLOWMETER_CALIB_VOLUME            450.0
 #define VOLTAGE_BOOST_EN_ADC_SWITCH       0
@@ -62,13 +65,16 @@ ESP8266WebServer server ( 80 );
 BMP280 bmp;
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
+#if SZELEP
 ADC_MODE(ADC_VCC); //only for old design
+#endif
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
 uint32_t voltage, moisture;
 double T, P;
 uint8_t hum;
 float temp, temperature;
+int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
 uint16_t  locsolo_duration;
 uint16_t  locsolo_start;
@@ -92,19 +98,24 @@ void valve_test();
 void flow_meter_calculate_velocity();
 void get_TempPressure();
 void go_sleep(long long int microseconds);
+void read_voltage();
+void read_moisture();
 
 void setup() {
   Serial.begin(115200);
   delay(10);
   Serial.println(ESP.getResetReason());
-  Serial.println("\nESP8266_client start!");
-  get_TempPressure();
-  pinMode(VOLTAGE_TO_DIVIDER, OUTPUT);
+  pinMode(GPIO15, OUTPUT);
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
   pinMode(VOLTAGE_BOOST_EN_ADC_SWITCH, OUTPUT);
+  pinMode(RXD_VCC_PIN, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT);
   pinMode(VALVE_SWITCH_TWO, INPUT);
+  pinMode(RXD_VCC_PIN, OUTPUT);
+  get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
+  read_voltage();
+  read_moisture();
   //pinMode(FLOWMETER, INPUT);
   //attachInterrupt(digitalPinToInterrupt(FLOWMETER), flow_meter_interrupt, FALLING);
   //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, LOW);
@@ -119,6 +130,10 @@ void setup() {
 
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.print("RSSI: ");
+  RSSI_value = WiFi.RSSI();
+  Serial.println(RSSI_value);
+  
 }
 
 void loop() {
@@ -136,26 +151,12 @@ void loop() {
   WiFiClient *stream;
   uint8_t buff[128] = { 0 };
   uint8_t mn = 0, count = 0;
-
-  //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
-  digitalWrite(VOLTAGE_TO_DIVIDER, 1);
-  delay(200);
-  voltage = 0;
-  for (int j = 0; j < 50; j++) voltage += ESP.getVcc(); // voltage+=analogRead(A0); for new design
-  digitalWrite(VOLTAGE_TO_DIVIDER, 0);
-  voltage = (voltage / 50); //*5.7;                           //5.7 is the resistor divider value
-  Serial.print("Voltage:");  Serial.println(voltage);
-
-  //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 1);
-  delay(200);
-  moisture = 0;
-  for (int j = 0; j < 50; j++) moisture += analogRead(A0);
-  moisture = (((float)moisture / 50) / 1024.0) * 100;
-  Serial.print("Moisture:");  Serial.println(moisture);
+  read_voltage();
+  read_moisture();
+  
   mqtt_reconnect(); 
   Serial.println(client.state());  
-  Serial.println(client.connected());  
-
+  Serial.println(client.connected());
   Serial.println("mqtt_reconnect");
   if (client.connected()) {
     char buf_name[50];                                                    //berakni funkcioba szepen mint kell
@@ -166,6 +167,9 @@ void loop() {
     client.publish(buf_name, buf);
     itoa((float)moisture, buf, 10);
     sprintf (buf_name, "%s%s", device_id, "/MOISTURE");
+    client.publish(buf_name, buf);
+    itoa(RSSI_value, buf, 10);
+    sprintf (buf_name, "%s%s", device_id, "/RSSI");
     client.publish(buf_name, buf);
     dtostrf((float)voltage / 1000, 6, 3, buf);
     sprintf (buf_name, "%s%s", device_id, "/VOLTAGE");
@@ -198,7 +202,7 @@ void loop() {
       sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
       client.publish(buf_name, "0");
       sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
-      sprintf(buff_f, "%d", millis()/1000);
+      dtostrf((float)millis()/1000, 8, 2, buff_f);
       client.publish(buf_name, buff_f);
       sprintf (buf_name, "%s%s", device_id, "/END");
       client.publish(buf_name, "0");
@@ -225,7 +229,7 @@ void loop() {
       dtostrf(flowmeter_velocity, 6, 2, buff_f);    
       client.publish(buf_name, buff_f);    
       sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
-      sprintf(buff_f, "%d", millis()/1000);
+      dtostrf((float)millis()/1000, 8, 2, buff_f);
       client.publish(buf_name, buff_f);
       sprintf (buf_name, "%s%s", device_id, "/END");
       client.publish(buf_name, "0");
@@ -233,7 +237,7 @@ void loop() {
       delay(100);
       client.disconnect();
     }
-    Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
+    Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
     Serial.println("delay");
     // WiFi.disconnect();
     //  WiFi.forceSleepBegin();
@@ -469,7 +473,7 @@ void valve_test(){
 }
 
 void get_TempPressure(){
-  if (!bmp.begin())  {
+  if (!bmp.begin(SDA,SCL))  {
     Serial.println("BMP init failed!");
     bmp.setOversampling(16);
   }
@@ -491,10 +495,37 @@ void go_sleep(long long int microseconds){
   valve_turn_off();
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
   espClient.stop();
-  Serial.print("time in awake state: "); Serial.print(millis()/1000); Serial.println(" s");
+  Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
   Serial.print("Entering in deep sleep for: "); Serial.print(int(microseconds/1000000)); Serial.println(" s");
   delay(1000);
   ESP.deepSleep(microseconds);
   delay(100);
 }
 
+void read_voltage(){
+  //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
+  digitalWrite(GPIO15, 0);
+  digitalWrite(RXD_VCC_PIN, 1);
+  voltage = 0;
+#if SZELEP
+  for (int j = 0; j < 50; j++) voltage += ESP.getVcc(); // for old design
+  voltage = (voltage / 50);                         //4.3 is the resistor divider value, 1.039 is empirical for ESP8266
+#else  
+  for (int j = 0; j < 50; j++) voltage+=analogRead(A0); // for new design
+  voltage = (voltage / 50)*4.7272*1.039;                         //4.3 is the resistor divider value, 1.039 is empirical for ESP8266
+#endif  
+  Serial.print("Voltage:");  Serial.println(voltage);
+  digitalWrite(RXD_VCC_PIN, 0);
+  }
+
+void read_moisture(){  
+#if !SZELEP
+  digitalWrite(GPIO15, 1);
+  delay(200);
+  moisture = 0;
+  for (int j = 0; j < 50; j++) moisture += analogRead(A0);
+  moisture = (((float)moisture / 50) / 1024.0) * 100;
+  Serial.print("Moisture:");  Serial.println(moisture);
+  digitalWrite(GPIO15, 0);
+#endif  
+}

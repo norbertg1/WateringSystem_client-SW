@@ -1,11 +1,14 @@
 #usage: source path/database_initialization_commands
 CREATE DATABASE watering_server;
 USE watering_server;
-CREATE TABLE users (
-	USER_ID 	varchar(12),
-	EMAIL 		varchar(320),
-	PASSWORD 	varchar(64)
-);
+CREATE TABLE IF NOT EXISTS `users` (
+  `USER_ID` int(11) NOT NULL AUTO_INCREMENT,
+  `USER_NAME` varchar(15) NOT NULL,
+  `USER_EMAIL` varchar(40) NOT NULL,
+  `USER_PASSWORD` varchar(255) NOT NULL,
+  `JOINING_DATE` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`USER_ID`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
 
 CREATE TABLE devices (
 	USER_ID						varchar(12),
@@ -36,6 +39,8 @@ CREATE TABLE data (
 	PRESSURE			float,
 	VOLTAGE				float,
 	ON_OFF_STATE		bool,
+    RSSI                int,
+    AWAKE_TIME          float,
 	TEMPERATURE_POINTS	int
 );
 
