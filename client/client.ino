@@ -27,10 +27,10 @@ char device_id[127];
 char mqtt_password[128];
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
-uint32_t voltage, moisture;
+uint32_t voltage;
 double T, P;
 uint8_t hum;
-float temp, temperature;
+float temp, temperature, moisture;
 int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
 uint16_t  locsolo_duration;
@@ -83,25 +83,14 @@ void loop() {
     char buf_name[50];                                                    //berakni funkcioba szepen mint kell
     char buf[10];
     client.loop();
-    dtostrf(T, 6, 1, buf);
-    sprintf (buf_name, "%s%s", device_id, "/TEMPERATURE");
-    client.publish(buf_name, buf);
-    itoa((float)moisture, buf, 10);
-    sprintf (buf_name, "%s%s", device_id, "/MOISTURE");
-    client.publish(buf_name, buf);
-    itoa(RSSI_value, buf, 10);
-    sprintf (buf_name, "%s%s", device_id, "/RSSI");
-    client.publish(buf_name, buf);
-    dtostrf((float)voltage / 1000, 6, 3, buf);
-    sprintf (buf_name, "%s%s", device_id, "/VOLTAGE");
-    client.publish(buf_name, buf);
-    dtostrf(P, 6, 3, buf);
-    sprintf (buf_name, "%s%s", device_id, "/PRESSURE");
-    client.publish(buf_name, buf);
-    sprintf (buf_name, "%s%s", device_id, "/READY_FOR_DATA");
-    client.publish(buf_name, "0");
+    mqttsend_d(T, device_id, "/TEMPERATURE", 1);
+    mqttsend_d(moisture, device_id, "/MOISTURE", 2);
+    mqttsend_i(RSSI_value, device_id, "/RSSI");
+    mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
+    mqttsend_d(P, device_id, "/PRESSURE", 3);
+    mqttsend_i(0, device_id, "/READY_FOR_DATA");
     client.loop();
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 20; i++) {    //Ez mire van? torolni ha nem kell
       delay(50);
       client.loop();
     }
@@ -118,13 +107,9 @@ void loop() {
       char buff_f[10];
       char buf_name[50];
       Serial.print("Valve state: "); Serial.println(valve_state());
-      sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
-      client.publish(buf_name, "0");
-      sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
-      dtostrf((float)millis()/1000, 8, 2, buff_f);
-      client.publish(buf_name, buff_f);
-      sprintf (buf_name, "%s%s", device_id, "/END");
-      client.publish(buf_name, "0");
+      mqttsend_i(0, device_id, "/ON_OFF_STATE");
+      mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+      mqttsend_i(0, device_id, "/END");
       delay(100);
       client.disconnect();
     }
@@ -139,30 +124,18 @@ void loop() {
       char buff_f[10];
       char buf_name[50];
       client.loop();
-      sprintf (buf_name, "%s%s", device_id, "/ON_OFF_STATE");
-      client.publish(buf_name, "1");
-      sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VELOCITY");
-      dtostrf(flowmeter_volume, 6, 2, buff_f);    
-      client.publish(buf_name, buff_f);
-      sprintf (buf_name, "%s%s", device_id, "/FLOWMETER_VOLUME");
-      dtostrf(flowmeter_velocity, 6, 2, buff_f);    
-      client.publish(buf_name, buff_f);    
-      sprintf (buf_name, "%s%s", device_id, "/AWAKE_TIME");
-      dtostrf((float)millis()/1000, 8, 2, buff_f);
-      client.publish(buf_name, buff_f);
-      sprintf (buf_name, "%s%s", device_id, "/END");
-      client.publish(buf_name, "0");
+      mqttsend_i(1, device_id, "/ON_OFF_STATE");
+      mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
+      mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
+      mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+      mqttsend_i(0, device_id, "/END");
       client.loop();
       delay(100);
       client.disconnect();
     }
     Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
     Serial.println("delay");
-    // WiFi.disconnect();
-    //  WiFi.forceSleepBegin();
     delay(DELAY_TIME);
-    //  WiFi.forceSleepWake();
-    //  delay(100);
     on_off_command = 0;
   }
 }
@@ -208,8 +181,6 @@ void valve_test(){
       valve_turn_on();
     }
 }
-
-
 
 void setup_pins(){
   pinMode(GPIO15, OUTPUT);
