@@ -4,5 +4,6 @@
 3. ESP8266 + alkatrészek + 470uF kondenzator!!!
 4. kipróbálás, programozás
 5. Multiméterrel mérjek mindeféle áramfelvételt!
-6. Multiméterrel mérjek Peak minimum feszültséget!!!
+6. Multiméterrel mérjek Peak minimum feszültséget!!! Mert bekapcsoláskor nagyon leeshet.
+Akksinál annyira nem is mint tápegységrol üzemeltetve.
 

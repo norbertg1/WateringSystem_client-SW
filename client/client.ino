@@ -1,6 +1,6 @@
 /*
-   This program login into ESP8266_locsolo_server. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature.
-   When A0 is HIGH ESP8266 loggin in to the serve every 30seconds, if it is LOW goind to deep sleep for 300seconds
+   This program login into ESP8266_locsolo_server on ubuntu. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature, etc.
+   When A0 is HIGH: ESP8266 loggin happens every 30seconds, if it is LOW ---> deep sleep for x seconds
    by Norbi
 
    3V alatt ne nyisson ki a szelep, de ha nyitva van akkor legyen egy deltaU feszĂĽltsĂ©g ami alatt csukodk be (pl 2.9V)
@@ -22,14 +22,14 @@
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
-#define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network in seconds, this is the time until we can set new SSID in seconds
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  40                            //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
+#define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  40                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
-#define SLEEP_TIME_NO_WIFI                SLEEP_TIME_NO_WIFI_SECONDS * 1000000    //when cannot connect to saved wireless network, this is the time until we can set new wifi SSID
+#define SLEEP_TIME_NO_WIFI                SLEEP_TIME_NO_WIFI_SECONDS * 1000000    
 #define SLEEP_TIME                        sleep_time_seconds * 1000000            //when watering is off, in microseconds
 #define DELAY_TIME                        delay_time_seconds * 1000               //when watering is on, in miliseconds
 #define WEB_UPDATE_TIMEOUT                WEB_UPDATE_TIMEOUT_SECONDS  * 1000      //time out for web update server
@@ -100,6 +100,7 @@ void get_TempPressure();
 void go_sleep(long long int microseconds);
 void read_voltage();
 void read_moisture();
+void go_sleep_callback(WiFiManager *myWiFiManager);
 
 void setup() {
   Serial.begin(115200);
@@ -416,8 +417,11 @@ void setup_wifi() {
   WiFiManager wifiManager;
   wifiManager.addParameter(&custom_device_id);
   wifiManager.addParameter(&custom_mqtt_password);
+  int valami=4;
+  if( ESP.getResetReason() != "Power on") wifiManager.setAPCallback([&](WiFiManager * wifi_manager) {go_sleep(valami);}); //wifiManager.setAPCallback(go_sleep_callback);
+  else wifiManager.setAPCallback(NULL); //probaljam meg kikomentezni
   wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
-  wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
+    wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
   if (!wifiManager.autoConnect(device_name)) {
     Serial.println("Failed to connect and hit timeout. Entering deep sleep!");
     valve_turn_off();
@@ -436,6 +440,10 @@ void setup_wifi() {
   EEPROM.end();
   Serial.println(device_id);
   Serial.println(mqtt_password);
+}
+
+void go_sleep_callback(WiFiManager *myWiFiManager){
+  go_sleep(SLEEP_TIME_NO_WIFI);
 }
 
 void flow_meter_interrupt(){
@@ -495,6 +503,7 @@ void go_sleep(long long int microseconds){
   valve_turn_off();
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
   espClient.stop();
+  
   Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
   Serial.print("Entering in deep sleep for: "); Serial.print(int(microseconds/1000000)); Serial.println(" s");
   delay(1000);

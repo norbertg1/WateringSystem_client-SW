@@ -42,6 +42,9 @@
 *.TLT
 /PCB/PCB/*.pdf
 
+#wallpapers
+/server_ubuntu/locsoló hátterek
+
 #directories
 PCB/PCB/**/
 
