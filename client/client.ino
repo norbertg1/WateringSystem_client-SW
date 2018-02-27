@@ -29,14 +29,9 @@ char mqtt_password[128];
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
 uint32_t voltage;
 double T, P;
-uint8_t hum;
 float temp, temperature, moisture;
 int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
-uint16_t  locsolo_duration;
-uint16_t  locsolo_start;
-short locsolo_flag = 0;
-short locsolo_number = LOCSOLO_NUMBER - 1;
 int sleep_time_seconds = 900;                   //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
 bool remote_update = 0;
