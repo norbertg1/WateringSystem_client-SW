@@ -11,8 +11,9 @@ CREATE TABLE IF NOT EXISTS `users` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
 
 CREATE TABLE devices (
-	USER_ID						varchar(12),
-	DEVICE_ID					varchar(20),
+	USER_NAME					varchar(127),
+	DEVICE_NAME					varchar(127),
+	DEVICE_ID					varchar(127),
 	LAST_ON_TIME				datetime,		#Az utolsó öntözés időpontja
 	ON_OFF_STATE				bool,			#A locsoló állapota
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
@@ -23,7 +24,8 @@ CREATE TABLE devices (
 	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
 	DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
 	SLEEP_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e locsolni
-	REMOTE_UPDATE				bool			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
+	REMOTE_UPDATE				bool,			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
+	USER_EMAIL					varchar(127)
 );
 
 /*A repeat rate megengedett értéke a 24 többszöröse (tehát 1 nap). 
@@ -31,7 +33,7 @@ CREATE TABLE devices (
 **eltolódhat 24 órával. Tehát -24 ===> 24-48h/öntözés, -48===> 48-72h/öntözés, stb...*/
 
 CREATE TABLE data (
-	DEVICE_ID			varchar(20),
+    DEVICE_NAME			varchar(20),		#Ez csak azért kell mert könyebben tájékozódok így az adatbázisban
 	LAST_LOGIN			datetime,
 	TEMPERATURE			float,
 	HUMIDITY			smallint,
@@ -41,14 +43,16 @@ CREATE TABLE data (
 	ON_OFF_STATE		bool,
     RSSI                int,
     AWAKE_TIME          float,
-	TEMPERATURE_POINTS	int
+	TEMPERATURE_POINTS	int,
+	DEVICE_ID			varchar(127)
 );
 
 insert into users values('anna','valaki@valaki.com','titok');
 insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0);
 
 CREATE TABLE scheduled_irrigation (
-	DEVICE_ID			varchar(20),
+	USER_ID				varchar(12),
+    DEVICE_ID			varchar(20),
 	ON_TIME				time,	
 	ON_TIME_LENGHT		int,
 	DONE_FOR_TODAY		bool,

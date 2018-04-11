@@ -3,8 +3,7 @@ mysql -u root -p
 source path/file_with_commands
 drop table talbe_name
 SELECT * FROM devices;
-insert into devices values('anna','anna_locs','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0)
-UPDATE devices SET ON_COMMAND = 0 where USER_ID = 'anna';
+insert into devices values('anna','locsolo2','411ef1-1440e0','2018-01-01 00:00:00',0,0,0,'7:20:00',0,0,0,60,600,0,0);UPDATE devices SET ON_COMMAND = 0 where USER_ID = 'anna';
 GRANT ALL PRIVILEGES ON dbTest.* To 'user'@'hostname' IDENTIFIED BY 'password';
 SELECT * FROM data WHERE DEVICE_ID LIKE 'anna_locs7' ORDER BY EPOCH DESC LIMIT 0,1
 mosquitto -c /etc/mosquitto/conf.d/default.conf
@@ -18,3 +17,10 @@ drop user 'webserver_agent'@'localhost';
 GRANT ALL PRIVILEGES ON watering_server.* TO 'webserver_agent'@'localhost';
 
 szenzor1:szenzor1
+locsolo2:locsolo2
+
+Mosquitohoz igy adjak hozza valakit vagy valamit /etc/mosquitto/passwd:
+
+MYSQL
+PETI peti -csak olvasas jogosulat
+root 1234

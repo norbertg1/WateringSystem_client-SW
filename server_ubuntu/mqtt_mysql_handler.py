@@ -15,7 +15,7 @@ from tendo import singleton
 import threading 
 
 print "MQTT_MySQL handler starting. ",
-me = singleton.SingleInstance() # will sys.exit(-1) if other instance is running
+#me = singleton.SingleInstance() # will sys.exit(-1) if other instance is running
 
 
 engine = create_engine("mysql+mysqldb://root:1234@localhost/watering_server?host=localhost?port=3306")
@@ -34,9 +34,11 @@ data = {}
 class database_data:
     data_table = Table('data', metadata, autoload=True);
 
-    def __init__( self, ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0,
+    def __init__( self, DEVICE_NAME=0, DEVICE_ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0, AWAKE_TIME=0, RSSI=0,
                   on_time=datetime.datetime.now(), off_time=datetime.datetime.now()):
-        self.ID = ID
+
+        self.DEVICE_NAME = DEVICE_NAME
+        self.DEVICE_ID = DEVICE_ID
         self.TEMPERATURE = TEMPERATURE
         self.HUMIDITY = HUMIDITY
         self.MOISTURE = MOISTURE
@@ -46,15 +48,19 @@ class database_data:
         self.TEMPERATURE_POINTS = TEMPERATURE_POINTS
         self.on_time = on_time
         self.off_time = off_time
+        self.AWAKE_TIME = AWAKE_TIME
+        self.RSSI = RSSI
+
 
     def save_database_data(self):
         trans = conn.begin()
-        database_data.data_table.insert().execute(DEVICE_ID=self.ID, LAST_LOGIN=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), TEMPERATURE=self.TEMPERATURE, HUMIDITY=self.HUMIDITY,
+        database_data.data_table.insert().execute(DEVICE_ID=self.DEVICE_ID, DEVICE_NAME = self.DEVICE_NAME, LAST_LOGIN=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), TEMPERATURE=self.TEMPERATURE, HUMIDITY=self.HUMIDITY,
                                                     MOISTURE=self.MOISTURE, PRESSURE=self.PRESSURE, VOLTAGE=self.VOLTAGE, ON_OFF_STATE=self.ON_OFF_STATE,
-                                                    TEMPERATURE_POINTS = self.TEMPERATURE_POINTS)
+                                                    TEMPERATURE_POINTS = self.TEMPERATURE_POINTS, RSSI=self.RSSI, AWAKE_TIME=self.AWAKE_TIME)
         trans.commit()
 
 def on_connect(client, userdata, rc, m):
+    client.subscribe("+/DEVICE_NAME")
     client.subscribe("+/TEMPERATURE")
     client.subscribe("+/HUMIDITY")
     client.subscribe("+/MOISTURE")
@@ -65,8 +71,9 @@ def on_connect(client, userdata, rc, m):
     client.subscribe("+/FLOWMETER_VOLUME")
     client.subscribe("+/FLOWMETER_VELOCITY")
     client.subscribe("+/AWAKE_TIME")
+    client.subscribe("+/RSSI")
     client.subscribe("+/END")
-    
+
 def on_message(client, userdata, msg):
     print "messeage"
     device_id=msg.topic[0:(msg.topic).find("/")]
@@ -77,14 +84,17 @@ def handle_database(device_id, variable_type, value):
     if (data.has_key(device_id) == 0) and session.query(exists().where(devices_table.c.DEVICE_ID==device_id)).scalar():
         print "device_id logged in:", device_id
         data[device_id] = database_data()
-        data[device_id].ID = device_id
+        data[device_id].DEVICE_ID = device_id
     if(data.has_key(device_id)):
         print (variable_type + ':' + value)
+        if(variable_type == 'DEVICE_NAME'):     data[device_id].DEVICE_NAME = value
         if(variable_type == 'TEMPERATURE'):     data[device_id].TEMPERATURE = value
         if(variable_type == 'HUMIDITY'):        data[device_id].HUMIDITY = value
         if(variable_type == 'MOISTURE'):        data[device_id].MOISTURE = value
         if(variable_type == 'PRESSURE'):        data[device_id].PRESSURE = value
         if(variable_type == 'VOLTAGE'):         data[device_id].VOLTAGE = value
+        if(variable_type == 'RSSI'):            data[device_id].RSSI = value
+        if(variable_type == 'AWAKE_TIME'):      data[device_id].AWAKE_TIME = value
         if(variable_type == 'READY_FOR_DATA'):  send_message_to_device(device_id)            
         if(variable_type == 'ON_OFF_STATE'):                #ha be volt kapcsolva a locsolás (amit az adatbázisból olvasok ki) és most olyan érték jön,
             collumn = data_table.select(data_table.c.DEVICE_ID == device_id).order_by(desc('LAST_LOGIN')).execute().fetchone()
@@ -145,12 +155,18 @@ client.connect("localhost",8883)
 #client.loop_forever()
 client.loop_start()
 
-"""today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
+today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
 while 1:
-    if datetime.datetime.now().day is not today and data.values() == []: #ha már elmúlt éjfél
+    print "server is alive" 
+    print threading.activeCount()
+    if datetime.datetime.now().day is not today: #and data.values() == []: #ha már elmúlt éjfél
         conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0")
-        today=datetime.datetime.now().day"""
-
+        today=datetime.datetime.now().day
+    print "valami"  
+    print threading.activeCount() 
+    if threading.activeCount() < 2: break #mert ezesetben a mosquito szerverhez kapcsolódó szál valószínűleg leállt
+    time.sleep(600)
+"""
 #bonyolultabb és erőforrásigényesebb, de így az éjszakán átnyúló öntözés is pontos azthiszem   
 while 1:
     print "server is alive" 
@@ -167,4 +183,4 @@ while 1:
         print "valami"  
     print threading.activeCount()    
     if threading.activeCount() < 2: break #mert ezesetben a mosquito szerverhez kapcsolódó szál valószínűleg leállt
-    time.sleep(10)
+    time.sleep(600)"""

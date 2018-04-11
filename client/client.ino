@@ -4,6 +4,11 @@
    by Norbi
 
    3V alatt ne nyisson ki a szelep, de ha nyitva van akkor legyen egy deltaU feszĂĽltsĂ©g ami alatt csukodk be (pl 2.9V)
+
+1. communicationba csinaltam azt hogy csak akkor menjen AP modba ha kapcsolóval történő bekapcsolás történik ezt ellenőrizni! Kétféleképp van megvalósítva.
+2. Ellenőrizni hogy az egész kommunikació rendeben lezajlik-e, mert valtozasok tortentek
+3. a szelep ki-be kapcsolasara tobb hibakodot is bevezettem, ellenorizzem ezek helyes mukodeset
+4. a chip ID-t valahogy vigyem att, es ez alapjan azonositsam a python kodban az egyes eszkozoket
 */
 #include "client.h"
 #include "certificates.h"
@@ -16,15 +21,15 @@ BMP280 bmp;
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 #if SZELEP
-ADC_MODE(ADC_VCC); //only for old design
+ADC_MODE(ADC_VCC);
 #endif
 
-const char* host = "192.168.1.100";
-const char* device_name = "szenzor1";
-const char* device_passwd = "szenzor1";
+//const char* host = "192.168.1.100";
+const char* mosquitto_user = "titok";
+const char* mosquitto_pass = "titok";
+char device_id[25];
 int mqtt_port= 8883;
-char device_id[127];
-char mqtt_password[128];
+char device_name[127];
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
 uint32_t voltage;
@@ -32,24 +37,27 @@ double T, P;
 float temp, temperature, moisture;
 int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
-int sleep_time_seconds = 900;                   //when watering is off, in seconds
+int sleep_time_seconds = 900;                  //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
 bool remote_update = 0;
 int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
-
+int valve_timeout=0;
 
 void setup() {
   Serial.begin(115200);
   delay(10);
+  Serial.print("\n");
   Serial.println(ESP.getResetReason());
-  void setup_pins();
+  String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
+  ID.toCharArray(device_id, 25); 
+  setup_pins();
   get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   read_voltage();           //Ez azthiszem kitorolheto
   //pinMode(FLOWMETER, INPUT);
   //attachInterrupt(digitalPinToInterrupt(FLOWMETER), flow_meter_interrupt, FALLING);
   //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, LOW);
-  if (valve_state) valve_turn_off();
+  if (valve_state) valve_turn_off();  
   Serial.println("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
   espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
@@ -57,27 +65,32 @@ void setup() {
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
   setup_wifi();
-
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   Serial.print("RSSI: ");
   RSSI_value = WiFi.RSSI();
   Serial.println(RSSI_value);
+  configTime(1 * 3600, 3600, "pool.ntp.org", "time.nist.gov");
+  Serial.println("checking for update ");
+  t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", "v1.0.0");
+  http_update_answer(ret);  
+  //delay(100);
   
 }
 
 void loop() {
-  valve_test();
+  //valve_test();
   read_voltage();
   read_moisture();
   mqtt_reconnect(); 
-  Serial.println("mqtt_reconnect");
-  Serial.println(client.state());  
-  Serial.println(client.connected());
+//Serial.println("mqtt_reconnect");
+//Serial.println(client.state());  
+//Serial.println(client.connected());
   if (client.connected()) {
     char buf_name[50];                                                    //berakni funkcioba szepen mint kell
     char buf[10];
     client.loop();
+    mqttsend_s(device_name, device_id, "/DEVICE_NAME");   //Ez csak azért van hogy ez is elmentődjön az SQL adatbázisban, így nekem könyebb beazonosítani az adott eszközt
     mqttsend_d(T, device_id, "/TEMPERATURE", 1);
     mqttsend_d(moisture, device_id, "/MOISTURE", 2);
     mqttsend_i(RSSI_value, device_id, "/RSSI");
@@ -87,17 +100,17 @@ void loop() {
     client.loop();
     for (int i = 0; i < 20; i++) {    //Ez mire van? torolni ha nem kell
       delay(50);
-      client.loop();
+      client.loop();                  //Itt várok az adatra, talán szebben is lehetne
     }
   }
 
   Serial.println("Setting up webupdate if set");
-  if (remote_update)  web_update();
+  if (remote_update && valve_state() == 0)  web_update();
   if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  {
     valve_turn_on();
   }
   else  valve_turn_off();
-  if (valve_state() == 0) {
+  if (valve_state() != 1) {     //ennek utannanezni
     if (client.connected()) {
       char buff_f[10];
       char buf_name[50];
@@ -137,6 +150,7 @@ void loop() {
 
 void valve_turn_on() {
 #if SZELEP
+  Serial.println("Valve_turn_on()");
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
   uint32_t t = millis();
@@ -144,12 +158,13 @@ void valve_turn_on() {
     delay(100);
   }
   if (valve_state) locsolo_state = HIGH;
-  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  Serial.println("Error turn on timeout reached");
+  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {Serial.println("Error turn on timeout reached");  valve_timeout=1;}
 #endif
 }
 
 void valve_turn_off() {
 #if SZELEP  
+  Serial.println("Valve_turn_off");
   uint16_t cnt = 0;
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
@@ -158,13 +173,20 @@ void valve_turn_off() {
     delay(100);
   }
   if (!valve_state) locsolo_state = LOW;
-  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  Serial.println("Error turn off timeout reached");
+  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {Serial.println("Error turn off timeout reached");  valve_timeout=1;}
 #endif
 }
 
 int valve_state() {
-#if SZELEP  
-  return digitalRead(VALVE_SWITCH_TWO);
+#if SZELEP
+  int ret=0;
+  if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))    {ret=1;}
+  if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))    {ret=0;}
+  if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))     {ret=2;}
+  if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))   {ret=3;}
+  if(valve_timeout) { ret+=10;}
+  return ret;  
+  //return digitalRead(VALVE_SWITCH_TWO);
 #else
   return 0;
 #endif
@@ -174,6 +196,7 @@ void valve_test(){
     while(1){
       valve_turn_off();
       valve_turn_on();
+    delay(100);
     }
 }
 
@@ -200,8 +223,8 @@ void go_sleep(long long int microseconds){
     microseconds -= micros();
   }
   Serial.print("Entering in deep sleep for: "); Serial.print(int(microseconds/1000000)); Serial.println(" s");
-  delay(200);
-  ESP.deepSleep(abs(microseconds - 200000)+1); //az elozo sort vonom ki
+  delay(100);
+  ESP.deepSleep(microseconds); //az elozo sort vonom ki
   delay(100);
 }
 
@@ -233,6 +256,7 @@ void flow_meter_calculate_velocity(){
 }
 
 void read_voltage(){
+#if !SZELEP  
   //digitalWrite(VOLTAGE_BOOST_EN_ADC_SWITCH, 0);
   digitalWrite(GPIO15, 0);        //FSA3157 digital switch
   digitalWrite(RXD_VCC_PIN, 1);
@@ -241,6 +265,12 @@ void read_voltage(){
   voltage = (voltage / 50)*4.7272*1.039;                         //4.3 is the resistor divider value, 1.039 is empirical for ESP8266
   Serial.print("Voltage:");  Serial.println(voltage);
   digitalWrite(RXD_VCC_PIN, 0);
+#else
+  voltage = 0;
+  for (int j = 0; j < 50; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
+  voltage = (voltage / 50);
+  Serial.print("Voltage:");  Serial.println(voltage);
+#endif
   }
 
 void read_moisture(){  
@@ -274,20 +304,17 @@ void get_TempPressure(){
   Serial.print("   P=");  Serial.println(P);
 }
 
-void mqttsend_d(double payload, char* device_id, char* topic, char precision){
-  char buff_topic[50];
-  char buff_payload[10];
-  dtostrf(payload, 9, precision, buff_payload);
-  sprintf (buff_topic, "%s%s", device_id, topic);
-  client.publish(buff_topic, buff_payload);
+void http_update_answer(t_httpUpdate_return ret){
+  switch(ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.println("[update] Update failed.");
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("[update] Update no Update.");
+      break;
+    case HTTP_UPDATE_OK:
+      Serial.println("[update] Update ok."); // may not called we reboot the ESP
+      break;    
+  }
 }
-
-void mqttsend_i(int payload, char* device_id, char* topic){
-  char buff_topic[50];
-  char buff_payload[10];
-  itoa(payload, buff_payload, 10);
-  sprintf (buff_topic, "%s%s", device_id, topic);
-  client.publish(buff_topic, buff_payload);
-}
-
 

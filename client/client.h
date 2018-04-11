@@ -19,11 +19,12 @@
 #include <PubSubClient.h>
 #include <WiFiUdp.h>
 #include <EEPROM.h>
+#include <ESP8266httpUpdate.h>
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
-#define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
+#define WIFI_CONNECTION_TIMEOUT           15                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  40                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  30                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
@@ -40,19 +41,20 @@
 #define DHT_TYPE                          DHT22
 #define LOCSOLO_NUMBER                    2
 #define VALVE_H_BRIDGE_RIGHT_PIN          12
-#define VALVE_H_BRIDGE_LEFT_PIN           15
-#define VALVE_SWITCH_ONE                  5
+#define VALVE_H_BRIDGE_LEFT_PIN           4
+#define VALVE_SWITCH_ONE                  14
 #define VALVE_SWITCH_TWO                  13
 #define GPIO15                            15
 #define RXD_VCC_PIN                       3
 #define SCL                               5
 #define SDA                               2
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
+//#define MQTT_SERVER                     "192.168.1.14"
 #define FLOWMETER_CALIB_VOLUME            450.0
 #define FLOWMETER                         2
 #define FLOWMETER_CALIB_VELOCITY          7.5
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.0
-#define SZELEP                            0
+#define SZELEP                            1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 
 void valve_turn_on();
@@ -66,7 +68,14 @@ void read_voltage();
 void read_moisture();
 void go_sleep_callback(WiFiManager *myWiFiManager);
 void mqttsend_d(double payload, String device_id, String topic,char precision);
+void http_update_answer(t_httpUpdate_return ret);
+void mqttsend_i(int payload, char* device_id, char* topic);
+void mqttsend_d(double payload, char* device_id, char* topic, char precision);
 
-extern char device_id[127];
+extern char device_name[127];
+extern char device_id[25];
+
+extern const char* mosquitto_user;
+extern const char* mosquitto_pass;
 
 #endif
