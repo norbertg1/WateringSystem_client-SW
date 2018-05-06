@@ -37,7 +37,7 @@ void mqtt_reconnect() {
       String clientId = "ESP8266Client-";
       clientId += String(ESP.getChipId(), HEX);
      
-      client.connect(clientId.c_str(),"titok" , "titok");
+      client.connect(clientId.c_str(),"titok" , "titok");       //Az Ubuntun futó mosquitoba a bejelentkezési adatok
       sprintf (buf_name, "%s%s", device_id, "/ON_OFF_COMMAND");
       client.subscribe(buf_name);
       client.loop();
@@ -84,25 +84,18 @@ void setup_wifi() {
   Serial.println("Setting up wifi");
   char device_id_wm[25];
 #if SZELEP
-  String AP_name = "ESP8266 Locsolo-";
+  String AP_name = "szelepvezerlo ";
 #else
-  String AP_name = "ESP8266 szenzor-";
+  String AP_name = "szenzor ";
 #endif
-  AP_name += String(ESP.getChipId(), HEX);
+  AP_name += String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   ID.toCharArray(device_id_wm, 25);
 
-  
-  EEPROM.begin(512);
-  for(int i=0; i<127;i++) {
-    device_name[i]=EEPROM.read(i);
-  }
   WiFi.mode(WIFI_STA);
   WiFiManager wifiManager;
 
-  WiFiManagerParameter custom_device_name("Device_Name", "Device Name", device_name, 127);
   WiFiManagerParameter print_device_ID(device_id, device_id, device_id_wm, 25);
-  wifiManager.addParameter(&custom_device_name);
   wifiManager.addParameter(&print_device_ID);
   if( ESP.getResetReason() != "Power on") {             //A setApcallback  meghiv egy funkciot ami az Acess Point működése alatt fog lefutni. Én itt berakom az eszközt deepsleepbe (lambda funkcio, specialitas). De lehet a WIFI_CONFIGURATION_PAGE_TIMEOUT kéne nullára raknom majd kiprobalom.
     Serial.print("Turn on reason is not \"Power on\" (probably wake up from deepsleep). Therefor AP mode is unnecessary in case of not found know wifi. Entering deepsleep (again) for:"); Serial.print(SLEEP_TIME_NO_WIFI); Serial.println(" s");
@@ -118,13 +111,6 @@ void setup_wifi() {
     valve_turn_off();
     go_sleep(SLEEP_TIME_NO_WIFI);
   }
-  strcpy(device_name, custom_device_name.getValue());
-  for(int i=0; i<127;i++) {
-    EEPROM.write(i,device_name[i]);
-  }
-  EEPROM.commit();
-  EEPROM.end();
-  Serial.println(device_name);
 }
 
 void web_update_setup() {
