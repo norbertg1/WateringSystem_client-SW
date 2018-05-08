@@ -181,6 +181,7 @@ void valve_turn_off() {
     closing_flag=1;
   }
   if (closing_flag==1)  {
+    flow_meter_calculate_velocity();
     mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
     mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
   }
