@@ -32,7 +32,9 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
 void mqtt_reconnect() {
   char buf_name[50];
   int i=0;
-  while(client.state() != 0 && i < 3){
+  int attempts = 3;
+  if (valve_state()) attempts=20;
+  while(client.state() != 0 && i < attempts){
     if(!client.connected()) {
       String clientId = "ESP8266Client-";
       clientId += String(ESP.getChipId(), HEX);
@@ -49,11 +51,16 @@ void mqtt_reconnect() {
       client.loop();
       sprintf (buf_name, "%s%s", device_id, "/REMOTE_UPDATE");
       client.subscribe(buf_name);
+      mqttsend_i(i, device_id, "/DEBUG");
       client.loop();
     }
-    Serial.print("\nattempt= "); Serial.print(++i);
+    if (i>1)  delay(1000);
+    if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
+      espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
+      espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+    }
+    Serial.print("\nattempt = "); Serial.print(++i);
     Serial.print(" The mqtt state is: "); Serial.println(client.state());
-    
   }
 }
 
@@ -73,7 +80,7 @@ void mqttsend_i(int payload, char* device_id, char* topic){
   client.publish(buff_topic, buff_payload);
 }
 
-void mqttsend_s(char *payload, char* device_id, char* topic){
+void mqttsend_s(const char *payload, char* device_id, char* topic){
   char buff_topic[50];
   sprintf (buff_topic, "%s%s", device_id, topic);
   client.publish(buff_topic, payload);
@@ -155,14 +162,15 @@ void web_update_setup() {
 //  Serial.printf("Ready for update through browser! Open http://%s in your browser\n", host);
 }
 
-void web_update() {
+void web_update(int minutes) {
   long int i = 0;
+  minutes = minutes * 1000 * 3600;
   web_update_setup();
   while (1)     {
     server.handleClient();
     delay(1);
     i++;
-    if (i == WEB_UPDATE_TIMEOUT) {
+    if (i == minutes) {
       Serial.println("Timeout reached, restarting");
       ESP.restart();
     }

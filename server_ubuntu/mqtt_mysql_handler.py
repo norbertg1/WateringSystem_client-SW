@@ -15,7 +15,8 @@ from tendo import singleton
 import threading 
 
 print "MQTT_MySQL handler starting. ",
-#me = singleton.SingleInstance() # will sys.exit(-1) if other instance is running
+me = singleton.SingleInstance() # will sys.exit(-1) if other instance is running
+
 
 
 engine = create_engine("mysql+mysqldb://root:1234@localhost/watering_server?host=localhost?port=3306")
@@ -34,7 +35,7 @@ data = {}
 class database_data:
     data_table = Table('data', metadata, autoload=True);
 
-    def __init__( self, DEVICE_NAME=0, DEVICE_ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0, AWAKE_TIME=0, RSSI=0,
+    def __init__( self, DEVICE_NAME=0, DEVICE_ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VERSION=0, RST_REASON=0, WATER_VOLUME=0, WATER_VELOCITY=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0, AWAKE_TIME=0, RSSI=0,
                   on_time=datetime.datetime.now(), off_time=datetime.datetime.now()):
 
         self.DEVICE_NAME = DEVICE_NAME
@@ -43,6 +44,10 @@ class database_data:
         self.HUMIDITY = HUMIDITY
         self.MOISTURE = MOISTURE
         self.PRESSURE = PRESSURE
+        self.VERSION = VERSION
+        self.RST_REASON = RST_REASON
+        self.WATER_VOLUME = WATER_VOLUME
+        self.WATER_VELOCITY = WATER_VELOCITY
         self.VOLTAGE = VOLTAGE
         self.ON_OFF_STATE = ON_OFF_STATE
         self.TEMPERATURE_POINTS = TEMPERATURE_POINTS
@@ -54,9 +59,10 @@ class database_data:
 
     def save_database_data(self):
         trans = conn.begin()
-        database_data.data_table.insert().execute(DEVICE_ID=self.DEVICE_ID, DEVICE_NAME = self.DEVICE_NAME, LAST_LOGIN=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), TEMPERATURE=self.TEMPERATURE, HUMIDITY=self.HUMIDITY,
-                                                    MOISTURE=self.MOISTURE, PRESSURE=self.PRESSURE, VOLTAGE=self.VOLTAGE, ON_OFF_STATE=self.ON_OFF_STATE,
-                                                    TEMPERATURE_POINTS = self.TEMPERATURE_POINTS, RSSI=self.RSSI, AWAKE_TIME=self.AWAKE_TIME)
+        database_data.data_table.insert().execute(DEVICE_ID=self.DEVICE_ID, DEVICE_NAME = self.DEVICE_NAME, LAST_LOGIN=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), 
+                                                    TEMPERATURE=self.TEMPERATURE, HUMIDITY=self.HUMIDITY, MOISTURE=self.MOISTURE, PRESSURE=self.PRESSURE, VERSION=self.VERSION,
+                                                    RST_REASON=self.RST_REASON, WATER_VOLUME=self.WATER_VOLUME, WATER_VELOCITY=self.WATER_VELOCITY, VOLTAGE=self.VOLTAGE,
+                                                    ON_OFF_STATE=self.ON_OFF_STATE, TEMPERATURE_POINTS = self.TEMPERATURE_POINTS, RSSI=self.RSSI, AWAKE_TIME=self.AWAKE_TIME)
         trans.commit()
 
 def on_connect(client, userdata, rc, m):
@@ -65,6 +71,8 @@ def on_connect(client, userdata, rc, m):
     client.subscribe("+/HUMIDITY")
     client.subscribe("+/MOISTURE")
     client.subscribe("+/PRESSURE")
+    client.subscribe("+/VERSION")
+    client.subscribe("+/RST_REASON")
     client.subscribe("+/VOLTAGE")
     client.subscribe("+/READY_FOR_DATA")
     client.subscribe("+/ON_OFF_STATE")
@@ -72,10 +80,10 @@ def on_connect(client, userdata, rc, m):
     client.subscribe("+/FLOWMETER_VELOCITY")
     client.subscribe("+/AWAKE_TIME")
     client.subscribe("+/RSSI")
+    client.subscribe("+/DEBUG")
     client.subscribe("+/END")
 
 def on_message(client, userdata, msg):
-    print "messeage"
     device_id=msg.topic[0:(msg.topic).find("/")]
     variable_type=msg.topic[(msg.topic).find("/")+1:len(msg.topic)]
     handle_database(device_id, variable_type, msg.payload)
@@ -87,15 +95,19 @@ def handle_database(device_id, variable_type, value):
         data[device_id].DEVICE_ID = device_id
     if(data.has_key(device_id)):
         print (variable_type + ':' + value)
-        if(variable_type == 'DEVICE_NAME'):     data[device_id].DEVICE_NAME = value
-        if(variable_type == 'TEMPERATURE'):     data[device_id].TEMPERATURE = value
-        if(variable_type == 'HUMIDITY'):        data[device_id].HUMIDITY = value
-        if(variable_type == 'MOISTURE'):        data[device_id].MOISTURE = value
-        if(variable_type == 'PRESSURE'):        data[device_id].PRESSURE = value
-        if(variable_type == 'VOLTAGE'):         data[device_id].VOLTAGE = value
-        if(variable_type == 'RSSI'):            data[device_id].RSSI = value
-        if(variable_type == 'AWAKE_TIME'):      data[device_id].AWAKE_TIME = value
-        if(variable_type == 'READY_FOR_DATA'):  send_message_to_device(device_id)            
+        if(variable_type == 'DEVICE_NAME'):         data[device_id].DEVICE_NAME = value
+        if(variable_type == 'TEMPERATURE'):         data[device_id].TEMPERATURE = value
+        if(variable_type == 'HUMIDITY'):            data[device_id].HUMIDITY = value
+        if(variable_type == 'MOISTURE'):            data[device_id].MOISTURE = value
+        if(variable_type == 'PRESSURE'):            data[device_id].PRESSURE = value
+        if(variable_type == 'VERSION'):             data[device_id].VERSION = value
+        if(variable_type == 'RST_REASON'):          data[device_id].RST_REASON = value
+        if(variable_type == 'FLOWMETER_VOLUME'):    data[device_id].WATER_VOLUME = value
+        if(variable_type == 'FLOWMETER_VELOCITY'):  data[device_id].WATER_VELOCITY = value
+        if(variable_type == 'VOLTAGE'):             data[device_id].VOLTAGE = value
+        if(variable_type == 'RSSI'):                data[device_id].RSSI = value
+        if(variable_type == 'AWAKE_TIME'):          data[device_id].AWAKE_TIME = value
+        if(variable_type == 'READY_FOR_DATA'):      send_message_to_device(device_id)            
         if(variable_type == 'ON_OFF_STATE'):                #ha be volt kapcsolva a locsolás (amit az adatbázisból olvasok ki) és most olyan érték jön,
             collumn = data_table.select(data_table.c.DEVICE_ID == device_id).order_by(desc('LAST_LOGIN')).execute().fetchone()
             if collumn is not None:
@@ -111,7 +123,7 @@ def handle_database(device_id, variable_type, value):
 def send_message_to_device(device_id): #send on_off command
     on_off=read_command_from_database(device_id)
     client.publish(device_id + "/ON_OFF_COMMAND", on_off)
-    print 'device', device_id, ':', on_off
+    print 'Command for the device', device_id, ':', on_off
     set_delay_sleep_times(device_id)
 
 def set_delay_sleep_times(device_id):
@@ -158,13 +170,13 @@ client.loop_start()
 today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
 while 1:
     print "server is alive" 
-    print threading.activeCount()
     if datetime.datetime.now().day is not today: #and data.values() == []: #ha már elmúlt éjfél
         conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0")
         today=datetime.datetime.now().day
-    print "valami"  
+    print "active threads: "  
     print threading.activeCount() 
     if threading.activeCount() < 2: break #mert ezesetben a mosquito szerverhez kapcsolódó szál valószínűleg leállt
+    print "loop completed\n"
     time.sleep(600)
 """
 #bonyolultabb és erőforrásigényesebb, de így az éjszakán átnyúló öntözés is pontos azthiszem   

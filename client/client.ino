@@ -2,6 +2,11 @@
    This program login into ESP8266_locsolo_server on ubuntu. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature, etc.
    When A0 is HIGH: ESP8266 loggin happens every 30seconds, if it is LOW ---> deep sleep for x seconds
    by Norbi
+
+   v2.4.1 verzióban be kell kapcsolni a Tools --> Debug port ---> Serial beállítást. Ez nélkül ha megszakad a wifi kapcsolat 
+   az mqtt_reconnect() funkció csak 3-4 próbálkozás alatt tud sikeresen visszacsatlakozni, felette már nem. Ezt a az opciót bekapcsolva viszont bármennyi próbálkozás után sikeres lehet az újracsatlakozás
+
+   v2.4.1 verzióban Tools --> lwIP Variant --> v1.4 Compile from source opció (többit nem teszteltem, kivéve: defaulnál (v2 Lower Memory) nem működik) szükséges a TLS MQTT titkosított kapcsolat működéséhez
 */
 #include "client.h"
 #include "certificates.h"
@@ -31,10 +36,11 @@ int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
 int sleep_time_seconds = 900;                  //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
-bool remote_update = 0;
+int remote_update = 0;
 int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
+String ver;
 
 void setup() {
   Serial.begin(115200);
@@ -54,23 +60,21 @@ void setup() {
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
   setup_wifi();
-  Serial.println("IP address: ");
+  Serial.println("IP address:  ");
   Serial.println(WiFi.localIP());
   Serial.print("RSSI: ");
-  RSSI_value = WiFi.RSSI();
-  Serial.println(RSSI_value);
+  Serial.println(WiFi.RSSI());
   //while(1){delay(100); RSSI_value = WiFi.RSSI(); Serial.println(RSSI_value);}
   configTime(1 * 3600, 3600, "pool.ntp.org", "time.nist.gov");
-  Serial.println("checking for update");
-  String ver;
   ver = VERSION;
-  ver += ':' + String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX) + ':';
+  ver += '.';
   ver += SZELEP;
   Serial.println(ver);
+  Serial.println("checking for update");
   t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
   http_update_answer(ret);  
   //delay(100);
-  
+
 }
 
 void loop() {
@@ -78,18 +82,17 @@ void loop() {
   read_voltage();
   read_moisture();
   mqtt_reconnect(); 
-//Serial.println("mqtt_reconnect");
-//Serial.println(client.state());  
-//Serial.println(client.connected());
   if (client.connected()) {
     char buf_name[50];
     char buf[10];
     client.loop();
     mqttsend_d(T, device_id, "/TEMPERATURE", 1);
     mqttsend_d(moisture, device_id, "/MOISTURE", 2);
-    mqttsend_i(RSSI_value, device_id, "/RSSI");
+    mqttsend_i(WiFi.RSSI(), device_id, "/RSSI");
     mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
     mqttsend_d(P, device_id, "/PRESSURE", 3);
+    mqttsend_s(ver.c_str(), device_id, "/VERSION");
+    mqttsend_s(ESP.getResetReason().c_str(), device_id, "/RST_REASON");
     mqttsend_i(0, device_id, "/READY_FOR_DATA");
     client.loop();
     for (int i = 0; i < 20; i++) {    //Ez mire van? torolni ha nem kell
@@ -99,7 +102,7 @@ void loop() {
   }
 
   Serial.println("Setting up webupdate if set");
-  if (remote_update && valve_state() == 0)  web_update();
+  if (remote_update && valve_state() == 0)  web_update(remote_update);
   if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  {
     valve_turn_on();
   }
@@ -110,13 +113,14 @@ void loop() {
       char buf_name[50];
       Serial.print("Valve state: "); Serial.println(valve_state());
       mqttsend_i(0, device_id, "/ON_OFF_STATE");
+      //mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);      //ez törölhető csak figyelem van-e indokolatlan megszakítás
+      //mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);  //ez törölhető csak figyelem van-e indokolatlan megszakítás
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
       mqttsend_i(0, device_id, "/END");
       delay(100);
       client.disconnect();
     }
-    go_sleep(SLEEP_TIME);
-    
+    go_sleep(SLEEP_TIME);    
   }
   else   {                        //ha a szelep nyitva van
     Serial.print("Valve state: "); Serial.println(valve_state());
@@ -139,6 +143,11 @@ void loop() {
     Serial.println("delay");
     delay(DELAY_TIME);
     on_off_command = 0;
+    detachInterrupt(FLOWMETER_PIN);
+    digitalWrite(GPIO15, LOW);
+    get_TempPressure();         //Nyitott szelepnél minden újracsatlakozásnál mérek hőmérsékletet és légnyomást
+    digitalWrite(GPIO15, HIGH);
+    attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
   }
 }
 
@@ -146,6 +155,8 @@ void valve_turn_on() {
 #if SZELEP
   digitalWrite(GPIO15, HIGH); //VOLTAGE BOOST
   Serial.println("Valve_turn_on()");
+  pinMode(FLOWMETER_PIN, INPUT);
+  attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
   uint32_t t = millis();
@@ -158,7 +169,8 @@ void valve_turn_on() {
 }
 
 void valve_turn_off() {
-#if SZELEP  
+#if SZELEP
+  bool closing_flag=0;
   Serial.println("Valve_turn_off");
   uint16_t cnt = 0;
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
@@ -166,9 +178,15 @@ void valve_turn_off() {
   uint32_t t = millis();
   while (!digitalRead(VALVE_SWITCH_ONE) && (millis() - t) < MAX_VALVE_SWITCHING_TIME) {
     delay(100);
+    closing_flag=1;
+  }
+  if (closing_flag==1)  {
+    mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
+    mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
   }
   if (!valve_state) locsolo_state = LOW;
   digitalWrite(GPIO15, LOW);  //VOLTAGE_BOOST
+  detachInterrupt(FLOWMETER_PIN); 
   if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {Serial.println("Error turn off timeout reached");  valve_timeout=1;}
 #endif
 }
@@ -232,12 +250,12 @@ void flow_meter_calculate_velocity(){
   static int last_int_time = 0, last_int = 0;;
 
   flowmeter_volume = (float)flowmeter_int / FLOWMETER_CALIB_VOLUME;
-  flowmeter_velocity = (float)(flowmeter_int - last_int) / (((int)millis() - last_int_time)/1000);
+  flowmeter_velocity = ((float)(flowmeter_int - last_int) / (((int)millis() - last_int_time)/1000))/FLOWMETER_CALIB_VELOCITY;
   last_int_time = millis();
   last_int = flowmeter_int;
 
-  Serial.print("Flowmeter volume: "); Serial.println(flowmeter_volume);
-  Serial.print("Flowmeter velocity: "); Serial.println(flowmeter_velocity);
+  Serial.print("Flowmeter volume: "); Serial.print(flowmeter_volume); Serial.println(" L");
+  Serial.print("Flowmeter velocity: "); Serial.print(flowmeter_velocity); Serial.println(" L/min");
 }
 
 void read_voltage(){
@@ -252,7 +270,7 @@ void read_voltage(){
 #else
   voltage = 0;
   for (int j = 0; j < 50; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
-  voltage = (voltage / 50);
+  voltage = (voltage / 50); //-0.2V
   Serial.print("Voltage:");  Serial.println(voltage);
 #endif
   }

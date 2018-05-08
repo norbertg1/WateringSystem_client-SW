@@ -22,13 +22,13 @@
 #include <ESP8266httpUpdate.h>
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
-#define WIFI_CONNECTION_TIMEOUT           15                              //Time for connecting to wifi in seconds
+#define WIFI_CONNECTION_TIMEOUT           40                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  30                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-#define VERSION                           "v1.0.0"
+#define VERSION                           "v1.19"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -51,8 +51,8 @@
 #define FLOWMETER_PIN                     5
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
 //#define MQTT_SERVER                     "192.168.1.14"
-#define FLOWMETER_CALIB_VOLUME            450.0
-#define FLOWMETER_CALIB_VELOCITY          7.5
+#define FLOWMETER_CALIB_VOLUME            450.0 //Pulses per Liter: 450
+#define FLOWMETER_CALIB_VELOCITY          7.5   //Pulse frequency (Hz) / 7.5 = flow rate in L/min
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.0
 #define SZELEP                            1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//

@@ -15,7 +15,6 @@ CREATE TABLE devices (
 	DEVICE_NAME					varchar(127),	#Ezt a felhasználó szabadon választhatja
 	DEVICE_ID					varchar(127),	#Ezt amikor a hardver AP üzemmódban van, akkor lehet kiolvasni belőle. Csak olyan hardver engedélyezett ami szerepel ebben a táblában
 	LAST_ON_TIME				datetime,		#Az utolsó öntözés időpontja
-	ON_OFF_STATE				bool,			#A locsoló állapota
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
@@ -24,7 +23,7 @@ CREATE TABLE devices (
 	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
 	DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
 	SLEEP_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e locsolni
-	REMOTE_UPDATE				bool,			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
+	REMOTE_UPDATE				int,			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
 	USER_EMAIL					varchar(127)	#Ez alapján lesznek azonosítva az egyes felhasználók
 );
 
@@ -33,26 +32,29 @@ CREATE TABLE devices (
 **eltolódhat 24 órával. Tehát -24 ===> 24-48h/öntözés, -48===> 48-72h/öntözés, stb...*/
 
 CREATE TABLE data (
-    DEVICE_ID			varchar(127),		#Ide megy a hardver CHIP_ID-FLASHCHIP_ID egyedi azonosítója. MQTT csomag: DEVICE_ID/változó	adat; pl.:411ef1-1440e0/TEMPERATURE 25
-    DEVICE_NAME			varchar(20),		#Ez csak azért kell mert könyebben tájékozódok így az adatbázisban, de törölhető mert össze lehet fűzni a devices és a data táblát
+	DEVICE_ID			varchar(127),
+    DEVICE_NAME         varchar(127),
 	LAST_LOGIN			datetime,
 	TEMPERATURE			float,
 	HUMIDITY			smallint,
 	MOISTURE			smallint,
 	PRESSURE			float,
-	VOLTAGE				float,
-	ON_OFF_STATE		bool,
-    RSSI                int,
-    AWAKE_TIME          float,
-	TEMPERATURE_POINTS	int
+    WATER_VOLUME        float,
+	WATER_VELOCITY      float,      
+    VOLTAGE				float,
+    ON_OFF_STATE		bool,
+	TEMPERATURE_POINTS	int,
+	RSSI				int,
+	AWAKE_TIME			float,
+    VERSION             varchar(10),
+    RST_REASON          varchar(25)
 );
 
 insert into users values('anna','valaki@valaki.com','titok');
-insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,'2017-08-31 15:19:51',0,'7:00:00',0,0);
+insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,0,'7:00:00',0,0,900,60,0);
 
 CREATE TABLE scheduled_irrigation (
-	USER_ID				varchar(12),
-    DEVICE_ID			varchar(20),
+	DEVICE_ID			varchar(20),
 	ON_TIME				time,	
 	ON_TIME_LENGHT		int,
 	DONE_FOR_TODAY		bool,
