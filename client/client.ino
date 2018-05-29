@@ -13,7 +13,7 @@
 #include "communication.h"
 
 
-DHT dht(DHT_PIN, DHT_TYPE);
+//DHT dht(DHT_PIN, DHT_TYPE);
 ESP8266WebServer server (80);
 BMP280 bmp;
 WiFiClientSecure espClient;
@@ -263,15 +263,16 @@ void read_voltage(){
 #if !SZELEP  
   digitalWrite(GPIO15, 0);        //FSA3157 digital switch
   digitalWrite(RXD_VCC_PIN, 1);
+  delay(200);
   voltage = 0;
-  for (int j = 0; j < 50; j++) voltage+=analogRead(A0); // for new design
-  voltage = (voltage / 50)*4.7272*1.039;                         //4.3 is the resistor divider value, 1.039 is empirical for ESP8266
+  for (int j = 0; j < 20; j++) voltage+=analogRead(A0); // for new design
+  voltage = (voltage / 20)*4.7272*1.039;                         //4.7272 is the resistor divider value, 1.039 is empirical for ESP8266
   Serial.print("Voltage:");  Serial.println(voltage);
   digitalWrite(RXD_VCC_PIN, 0);
 #else
   voltage = 0;
-  for (int j = 0; j < 50; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
-  voltage = (voltage / 50); //-0.2V
+  for (int j = 0; j < 10; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
+  voltage = (voltage / 10) - VOLTAGE_CALIB; //-0.2V
   Serial.print("Voltage:");  Serial.println(voltage);
 #endif
   }
@@ -281,11 +282,11 @@ void read_moisture(){
   digitalWrite(GPIO15, 1);          //FSA3157 digital switch
   delay(1000);
   moisture = 0;
-  for (int j = 0; j < 50; j++) moisture += analogRead(A0);
-  moisture = (((float)moisture / 50) / 1024.0) * 100;
+  for (int j = 0; j < 20; j++) moisture += analogRead(A0);
+  moisture = (((float)moisture / 20) / 1024.0) * 100;
   Serial.print("Moisture:");  Serial.println(moisture);
   digitalWrite(GPIO15, 0);
-  delay(1000);
+  delay(100);
 #endif  
 }
 
@@ -293,9 +294,9 @@ void get_TempPressure(){
   
   if (!bmp.begin(SDA,SCL))  {
     Serial.println("BMP init failed!");
-    bmp.setOversampling(16);
+    //bmp.setOversampling(16);
   }
-  else Serial.println("BMP init success!");
+  else {Serial.println("BMP init success!"); bmp.setOversampling(16);}
   double t = 0, p = 0;
   for (int i = 0; i < 5; i++) {
     delay(bmp.startMeasurment());

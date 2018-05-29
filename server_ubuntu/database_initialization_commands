@@ -20,11 +20,16 @@ CREATE TABLE devices (
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
 	IRRIGATION_LENGHT			int,			#ilyen hosszan tartson az öntözés	
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
-	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz#
-	DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
+	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz
+    TEMPERATURE_POINTS	        int,            #ebben tárolom
+    AREA                        int,            #Az öntözendő terület nagysága m2-ben	
+    DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
 	SLEEP_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e locsolni
 	REMOTE_UPDATE				int,			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
-	USER_EMAIL					varchar(127)	#Ez alapján lesznek azonosítva az egyes felhasználók
+    LATID                       float,          #helyadat	
+    LONGIT                      float,          #helyadat
+    DAILY_MAX                   float,          #openweathermap-ból lekérdezett érték
+    USER_EMAIL					varchar(127)	#Ez alapján lesznek azonosítva az egyes felhasználók
 );
 
 /*A repeat rate megengedett értéke a 24 többszöröse (tehát 1 nap). 
@@ -40,7 +45,8 @@ CREATE TABLE data (
 	MOISTURE			smallint,
 	PRESSURE			float,
     WATER_VOLUME        float,
-	WATER_VELOCITY      float,      
+	WATER_VELOCITY      float,
+    MM                  int,      
     VOLTAGE				float,
     ON_OFF_STATE		bool,
 	TEMPERATURE_POINTS	int,
@@ -58,5 +64,15 @@ CREATE TABLE scheduled_irrigation (
 	ON_TIME				time,	
 	ON_TIME_LENGHT		int,
 	DONE_FOR_TODAY		bool,
-	TODAY				int
 );
+
+CREATE TABLE scheduled_irrigation_one_time (
+	DEVICE_ID			varchar(20),
+	ON_TIME				time,	
+	ON_TIME_LENGHT		int,
+	DONE_FOR_TODAY		bool,
+);
+
+CREATE VIEW data_last_week AS SELECT * from data WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY);
+CREATE VIEW last_week as SELECT data.DEVICE_ID, devices.DEVICE_NAME, data.LAST_LOGIN, data.TEMPERATURE, data.HUMIDITY, data.MOISTURE, data.PRESSURE, data.WATER_VOLUME, data.WATER_VELOCITY, data.VOLTAGE, data.ON_OFF_STATE, data.TEMPERATURE_POINTS, data.RSSI, data.AWAKE_TIME, data.VERSION, data.RST_REASON from data  JOIN devices ON data.DEVICE_ID = devices.DEVICE_ID WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY);
+CREATE VIEW last_week_desc as SELECT data.DEVICE_ID, devices.DEVICE_NAME, data.LAST_LOGIN, data.TEMPERATURE, data.HUMIDITY, data.MOISTURE, data.PRESSURE, data.WATER_VOLUME, data.WATER_VELOCITY, data.VOLTAGE, data.ON_OFF_STATE, data.TEMPERATURE_POINTS, data.RSSI, data.AWAKE_TIME, data.VERSION, data.RST_REASON from data  JOIN devices ON data.DEVICE_ID = devices.DEVICE_ID WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY) ORDER BY LAST_LOGIN desc;

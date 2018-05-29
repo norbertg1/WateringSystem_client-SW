@@ -13,10 +13,13 @@ import ssl
 ssl.match_hostname = lambda cert, hostname: True
 from tendo import singleton
 import threading 
+import pyowm
 
-print "MQTT_MySQL handler starting. ",
+print "MQTT_MySQL handler starting.",
 me = singleton.SingleInstance() # will sys.exit(-1) if other instance is running
 
+#Ha ez a sor ki van kommentezve akkor ez a process amit a crontabe 15 precenként elindít kiütök egymást és ha pont megy a locsoló le fog állni
+#ellenben így lehet manuálisan elindítani ezt a kódot módosítás után mert megszünteti az előző futását
 
 
 engine = create_engine("mysql+mysqldb://root:1234@localhost/watering_server?host=localhost?port=3306")
@@ -29,6 +32,8 @@ users_table = Table('users', metadata, autoload=True);
 devices_table = Table('devices', metadata, autoload=True);
 data_table = Table('data', metadata, autoload=True);
 scheduled_irrigation_table = Table('scheduled_irrigation', metadata, autoload=True);
+
+owm = pyowm.OWM('80c4722573ef8abe4b03228d9465fe09') 
 
 data = {}
 
@@ -137,6 +142,7 @@ def read_command_from_database(device_id):
     collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
     if(collumn['ON_COMMAND']): return 1
     if(scheduled_irrigation(device_id)): return 1
+    #if(scheduled_irrigation_one_time(device_id)): return 1
     #folytatni ha ez a funkcio 1est ad vissza az bekapcsolja az adott eszközön az öntözést
     return 0
 
@@ -152,8 +158,35 @@ def scheduled_irrigation(device_id):
     if data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:    return 1
     return 0
 
+def scheduled_irrigation_one_time(device_id):
+    collumn=scheduled_irrigation_one_time_table.select(scheduled_irrigation_one_time_table.c.DEVICE_ID == device_id).execute()
+    for row in collumn:
+        if 0 < (datetime.datetime.now()-datetime.datetime.combine(datetime.date.today(), row['ON_TIME'])).total_seconds()/60 < 100 and not row['DONE_FOR_TODAY']:
+            conn.execute("UPDATE scheduled_irrigation_one_time SET DONE_FOR_TODAY = 1" + " where DEVICE_ID = \'" + device_id + "\' AND ON_TIME = \'" + str(row['ON_TIME']) + "\'")
+            data[device_id].on_time = datetime.datetime.now()
+            on_time_lenght = row['ON_TIME_LENGHT']
+            data[device_id].off_time = (datetime.datetime.combine(datetime.date.today(), data[device_id].on_time.time()) + datetime.timedelta(minutes=on_time_lenght))
+            break
+    if data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:    return 1
+    return 0
+
 def on_disconnect():
     print ('client disconnected')
+
+def temperature_points():
+    collumn=devices_table.select().execute()
+    for row in collumn:
+        if(row['IRRIGATION_ON_TEMPERATURE']):            
+            if(row['DAILY_MAX']<15):     conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(int(row["TEMPERATURE_POINTS"]) + 1) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            if(15<row['DAILY_MAX']<20):  conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(int(row["TEMPERATURE_POINTS"]) + 2) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            if(20<row['DAILY_MAX']<25):  conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(int(row["TEMPERATURE_POINTS"]) + 3) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            if(25<row['DAILY_MAX']<30):  conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(int(row["TEMPERATURE_POINTS"]) + 4) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            if(30<row['DAILY_MAX']<35):  conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(int(row["TEMPERATURE_POINTS"]) + 5) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            if(35<row['DAILY_MAX']):     conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(int(row["TEMPERATURE_POINTS"]) + 6) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+            if(row["TEMPERATURE_POINTS"] >= 7): 
+                conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(row["TEMPERATURE_POINTS"] - 7) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
+                conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\'," + str(row["IRRIGATION_LENGHT"]) + ",0)")           
+        else:   conn.execute("UPDATE devices SET TEMPERATURE_POINTS = 0 where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
 
 print "Server is starting in 10s"
 time.sleep(10)
@@ -164,7 +197,6 @@ client.on_connect = on_connect
 client.on_message = on_message
 client.on_disconnect = on_disconnect
 client.connect("localhost",8883)
-#client.loop_forever()
 client.loop_start()
 
 today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
@@ -172,7 +204,16 @@ while 1:
     print "server is alive" 
     if datetime.datetime.now().day is not today: #and data.values() == []: #ha már elmúlt éjfél
         conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0")
+        conn.execute("DELETE FROM scheduled_irrigation_one_time")
         today=datetime.datetime.now().day
+    temperature_points()
+    collumn=devices_table.select().execute()     #ez a openweathermap-ról lehúzza az akutális hőmérsékletet és ha ez nagyobb mint aznapi maximum akkor átírja azt erre
+    for row in collumn:
+        observation = owm.weather_at_coords(row['LATID'], row['LONGIT'])
+        T=observation.get_weather().get_temperature('celsius')['temp']
+        if (T > row['DAILY_MAX']):
+            print ("valami")
+            conn.execute("UPDATE devices SET DAILY_MAX = " + str(T) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
     print "active threads: "  
     print threading.activeCount() 
     if threading.activeCount() < 2: break #mert ezesetben a mosquito szerverhez kapcsolódó szál valószínűleg leállt

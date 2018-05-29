@@ -28,7 +28,7 @@
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-#define VERSION                           "v1.19"
+#define VERSION                           "v1.24"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -38,24 +38,39 @@
 #define DELAY_TIME                        delay_time_seconds * 1000               //when watering is on, in miliseconds
 #define WEB_UPDATE_TIMEOUT                WEB_UPDATE_TIMEOUT_SECONDS  * 1000      //time out for web update server
 #define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
-#define DHT_PIN                           0
 #define DHT_TYPE                          DHT22
-#define VALVE_H_BRIDGE_RIGHT_PIN          12
-#define VALVE_H_BRIDGE_LEFT_PIN           4
-#define VALVE_SWITCH_ONE                  14
-#define VALVE_SWITCH_TWO                  13
-#define GPIO15                            15      //ennek kene lennie a voltage boost EN pinnek és az FSA3157 switch pinnek is
+//#define DHT_PIN                           0     //<---- innet kikommentezni oldhoz
+//#define VALVE_H_BRIDGE_RIGHT_PIN          12
+//#define VALVE_H_BRIDGE_LEFT_PIN           4
+//#define VALVE_SWITCH_ONE                  14
+//#define VALVE_SWITCH_TWO                  13
+//#define GPIO15                            15      //ennek kene lennie a voltage boost EN pinnek és az FSA3157 switch pinnek is
+//#define SCL                               5
+//#define SDA                               2
+//#define FLOWMETER_PIN                     5     //<---- eddig
 #define RXD_VCC_PIN                       3
-#define SCL                               5
-#define SDA                               2
-#define FLOWMETER_PIN                     5
+#define VOLTAGE_CALIB                     150
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
 //#define MQTT_SERVER                     "192.168.1.14"
 #define FLOWMETER_CALIB_VOLUME            450.0 //Pulses per Liter: 450
 #define FLOWMETER_CALIB_VELOCITY          7.5   //Pulse frequency (Hz) / 7.5 = flow rate in L/min
-#define MINIMUM_VALVE_OPEN_VOLTAGE        3.0
+#define MINIMUM_VALVE_OPEN_VOLTAGE        3.1
 #define SZELEP                            1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
+
+//--------------------------------------------------------------------old---------------------------------------------------------------------------------------------------------------------------------------------------//
+#define VALVE_H_BRIDGE_RIGHT_PIN          12
+#define VALVE_H_BRIDGE_LEFT_PIN           15
+#define VALVE_SWITCH_ONE                  5
+#define VALVE_SWITCH_TWO                  13
+#define GPIO15                            0
+#define FLOWMETER_PIN                     4
+#define SCL                               3
+#define SDA                               14
+//----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
+
+
+
 
 void valve_turn_on();
 void valve_turn_off();
