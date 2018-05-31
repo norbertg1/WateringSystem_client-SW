@@ -18,9 +18,9 @@ CREATE TABLE devices (
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
-	IRRIGATION_LENGHT			int,			#ilyen hosszan tartson az öntözés	
+	IRRIGATION_LENGHT			float,			#ilyen hosszan tartson az öntözés	
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
-	IRRIGATION_ON_TEMPERATURE	bool,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz
+	IRRIGATION_ON_TEMPERATURE	int,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz
     TEMPERATURE_POINTS	        int,            #ebben tárolom
     AREA                        int,            #Az öntözendő terület nagysága m2-ben	
     DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
@@ -29,6 +29,7 @@ CREATE TABLE devices (
     LATID                       float,          #helyadat	
     LONGIT                      float,          #helyadat
     DAILY_MAX                   float,          #openweathermap-ból lekérdezett érték
+    FORECAST_MM                 int,            #openweathermap-ból éjfélkor előrejelzett esőmennyiség 18 órán belül     
     USER_EMAIL					varchar(127)	#Ez alapján lesznek azonosítva az egyes felhasználók
 );
 
@@ -62,15 +63,38 @@ insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,0,'7:00:0
 CREATE TABLE scheduled_irrigation (
 	DEVICE_ID			varchar(20),
 	ON_TIME				time,	
-	ON_TIME_LENGHT		int,
-	DONE_FOR_TODAY		bool,
+	ON_TIME_LENGHT		int,                    #vagy időben
+	ON_TIME_LITERS      int,                    #vagy literben
+    ON_TIME_MM          int,                    #vagy mm-ben kell meghatarozni az öntözés hosszát
+    DONE_FOR_TODAY		bool
 );
 
 CREATE TABLE scheduled_irrigation_one_time (
-	DEVICE_ID			varchar(20),
+    DEVICE_ID			varchar(20),
 	ON_TIME				time,	
-	ON_TIME_LENGHT		int,
+	ON_TIME_LENGHT		int,                    #vagy időben
+	ON_TIME_LITERS      int,                    #vagy literben
+    ON_TIME_MM          int,                    #vagy mm-ben kell meghatarozni az öntözés hosszát
 	DONE_FOR_TODAY		bool,
+    COMMAND_ID          int default 0              #0 - user, 1 - temperature points, 2 - hottest days irrigation, 3 - moisture
+);
+
+CREATE TABLE hottest_days_irrigation (           #A legmelgebb napokon (30°C+) szükséges lehet lehet rövid (1perces) öntözésekkel lehűteni a gyepet akár többször is
+    DEVICE_ID                       varchar(20),
+	IRRIGATION_ONE_TEMPERATURE      float,	
+	IRRIGATION_ONE_CHECK_TIME       time,
+	IRRIGATION_ONE_TIME             time,	
+    IRRIGATION_TWO_TEMPERATURE      float,	
+	IRRIGATION_TWO_CHECK_TIME       time,
+	IRRIGATION_TWO_TIME             time,
+	IRRIGATION_THREE_TEMPERATURE    float,	
+	IRRIGATION_THREE_CHECK_TIME     time,
+	IRRIGATION_THREE_TIME           time
+);
+
+CREATE TABLE pairs (                            #Az érzékelők álltal mért adat összepárosítása a szelepvezérlőkkel
+	VALVE_ID			varchar(20),
+	SENSOR_ID   		varchar(20)
 );
 
 CREATE VIEW data_last_week AS SELECT * from data WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY);
