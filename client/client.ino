@@ -41,6 +41,7 @@ int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
 String ver;
+int mqtt_done=0;
 
 void setup() {
   Serial.begin(115200);
@@ -81,10 +82,12 @@ void loop() {
   //valve_test();
   read_voltage();
   read_moisture();
-  mqtt_reconnect(); 
+  mqtt_reconnect();
+  //flow_meter_calculate_velocity(); 
   if (client.connected()) {
     char buf_name[50];
     char buf[10];
+    mqtt_done=0;
     client.loop();
     mqttsend_d(T, device_id, "/TEMPERATURE", 1);
     mqttsend_d(moisture, device_id, "/MOISTURE", 2);
@@ -93,11 +96,15 @@ void loop() {
     mqttsend_d(P, device_id, "/PRESSURE", 3);
     mqttsend_s(ver.c_str(), device_id, "/VERSION");
     mqttsend_s(ESP.getResetReason().c_str(), device_id, "/RST_REASON");
+    mqttsend_d((float)flowmeter_int / FLOWMETER_CALIB_VOLUME, device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
+    mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
     mqttsend_i(0, device_id, "/READY_FOR_DATA");
+    //delay(3000);
     client.loop();
-    for (int i = 0; i < 20; i++) {    //Ez mire van? torolni ha nem kell
-      delay(50);
+    for (int i = 0; i < 200; i++) {    //Ez mire van? torolni ha nem kell
+      delay(100);
       client.loop();                  //Itt várok az adatra, talán szebben is lehetne
+      if (mqtt_done == 4) break;
     }
   }
 
@@ -252,6 +259,7 @@ void flow_meter_calculate_velocity(){
 
   flowmeter_volume = (float)flowmeter_int / FLOWMETER_CALIB_VOLUME;
   flowmeter_velocity = ((float)(flowmeter_int - last_int) / (((int)millis() - last_int_time)/1000))/FLOWMETER_CALIB_VELOCITY;
+  //if (flowmeter_volume == 0) flowmeter_velocity=0;
   last_int_time = millis();
   last_int = flowmeter_int;
 

@@ -7,6 +7,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
   if (!strcmp(topic, buff)) {
     on_off_command = payload[0] - 48;
     Serial.print("Valve command: ");  Serial.println(on_off_command);
+    mqtt_done++;
   }
   sprintf (buff, "%s%s", device_id, "/DELAY_TIME");
   if (!strcmp(topic, buff)) {
@@ -14,6 +15,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
     buff[length] = '\n';
     delay_time_seconds = atoi(buff);
     Serial.print("Delay time_seconds: "); Serial.println(delay_time_seconds);
+    mqtt_done++;
   }
   sprintf (buff, "%s%s", device_id, "/SLEEP_TIME");
   if (!strcmp(topic, buff)) {
@@ -21,11 +23,13 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
     buff[length] = '\n';
     sleep_time_seconds = atoi(buff);
     Serial.print("Sleep time_seconds: "); Serial.println(sleep_time_seconds);
+    mqtt_done++;
   }
   sprintf (buff, "%s%s", device_id, "/REMOTE_UPDATE");
   if (!strcmp(topic, buff)) {
     remote_update = payload[0] - 48;
     Serial.print("Remote update: "); Serial.println(remote_update);
+    mqtt_done++;
   }
 }
 
@@ -115,7 +119,7 @@ void setup_wifi() {
   wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
   if (!wifiManager.autoConnect(AP_name.c_str())) {
     Serial.println("Failed to connect and hit timeout. Entering deep sleep!");
-    valve_turn_off();
+    //valve_turn_off();
     go_sleep(SLEEP_TIME_NO_WIFI);
   }
 }
