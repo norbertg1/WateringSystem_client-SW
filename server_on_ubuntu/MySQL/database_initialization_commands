@@ -16,20 +16,21 @@ CREATE TABLE devices (
 	DEVICE_ID					varchar(127),	#Ezt amikor a hardver AP üzemmódban van, akkor lehet kiolvasni belőle. Csak olyan hardver engedélyezett ami szerepel ebben a táblában
 	LAST_ON_TIME				datetime,		#Az utolsó öntözés időpontja
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
-	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio
+	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio. NINCS RÁ MEGÍRVA A KÓD
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
 	IRRIGATION_LENGHT			float,			#ilyen hosszan tartson az öntözés	
+	IRRIGATION_LITERS           float,			#és ilyen hosszan tartson az öntözés	
+	IRRIGATION_MM   			float,			#és ilyen hosszan tartson az öntözés	
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
-	IRRIGATION_ON_TEMPERATURE	int,			#A napi speciálisan kiszámított hőmréséklettől függően öntöz
-    TEMPERATURE_POINTS	        int,            #ebben tárolom
+    TEMPERATURE_POINTS	        int,            #Minden eszköz a napi legmagasabb hőmréséklettől függően pontokat kap. Ha eléri ezt a pontszámot akkor másnapra létrejön egy automatikus öntözés. A 0 érték a funkció kikapcsolását jelenti.
     AREA                        int,            #Az öntözendő terület nagysága m2-ben	
     DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
 	SLEEP_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e locsolni
 	REMOTE_UPDATE				int,			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
-    LATID                       float,          #helyadat	
-    LONGIT                      float,          #helyadat
+    LATID                       float,          #helyadat az openweathermap APInak
+    LONGIT                      float,          #helyadat az openweathermap APInak
     DAILY_MAX                   float,          #openweathermap-ból lekérdezett érték
-    FORECAST_MM                 int,            #openweathermap-ból éjfélkor előrejelzett esőmennyiség 18 órán belül     
+    FORECAST_MM                 float,            #openweathermap-ból éjfélkor előrejelzett esőmennyiség 18 órán belül. Ha nagyobb mint 5 mm, nincs automatizált öntözés következő nap   
     USER_EMAIL					varchar(127)	#Ez alapján lesznek azonosítva az egyes felhasználók
 );
 
@@ -52,6 +53,7 @@ CREATE TABLE data (
     ON_OFF_STATE		bool,
 	TEMPERATURE_POINTS	int,
 	RSSI				int,
+    RAIN_MM             float,
 	AWAKE_TIME			float,
     VERSION             varchar(10),
     RST_REASON          varchar(25)
@@ -81,15 +83,15 @@ CREATE TABLE scheduled_irrigation_one_time (
 
 CREATE TABLE hottest_days_irrigation (           #A legmelgebb napokon (30°C+) szükséges lehet lehet rövid (1perces) öntözésekkel lehűteni a gyepet akár többször is
     DEVICE_ID                       varchar(20),
-	IRRIGATION_ONE_TEMPERATURE      float,	
-	IRRIGATION_ONE_CHECK_TIME       time,
-	IRRIGATION_ONE_TIME             time,	
-    IRRIGATION_TWO_TEMPERATURE      float,	
-	IRRIGATION_TWO_CHECK_TIME       time,
-	IRRIGATION_TWO_TIME             time,
-	IRRIGATION_THREE_TEMPERATURE    float,	
-	IRRIGATION_THREE_CHECK_TIME     time,
-	IRRIGATION_THREE_TIME           time
+	IRRIGATION_ONE_TEMPERATURE      float   default 35,
+	IRRIGATION_ONE_CHECK_TIME       time    not null default 0,
+	IRRIGATION_ONE_TIME             time    not null default 0,
+    IRRIGATION_TWO_TEMPERATURE      float   default 35,
+	IRRIGATION_TWO_CHECK_TIME       time    not null default 0,
+	IRRIGATION_TWO_TIME             time    not null default 0,
+	IRRIGATION_THREE_TEMPERATURE    float   default 35,
+	IRRIGATION_THREE_CHECK_TIME     time    not null default 0,
+	IRRIGATION_THREE_TIME           time    not null default 0
 );
 
 CREATE TABLE pairs (                            #Az érzékelők álltal mért adat összepárosítása a szelepvezérlőkkel

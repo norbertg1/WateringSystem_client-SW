@@ -40,11 +40,11 @@
 *.htm
 *.REP
 *.TLT
-/PCB/PCB/*.pdf
+/PCB/altium/*.pdf
 
 #wallpapers
-/server_ubuntu/locsoló hátterek
+/server_on_ubuntu/wallpappers
 
 #directories
-PCB/PCB/**/
+PCB/altium/**/
 

@@ -34,6 +34,7 @@ scheduled_irrigation_table = Table('scheduled_irrigation', metadata, autoload=Tr
 scheduled_irrigation_one_time_table = Table('scheduled_irrigation_one_time', metadata, autoload=True);
 hottest_days_irrigation_table = Table('hottest_days_irrigation', metadata, autoload=True);
 pairs_table = Table('pairs', metadata, autoload=True);
+forecast_mm_limit = 5
 
 owm = pyowm.OWM('80c4722573ef8abe4b03228d9465fe09') 
 
@@ -243,10 +244,12 @@ def scheduled_irrigation_one_time_lenght(device_id, data_device):
             total_irrigation_time  += float(data[i]["AWAKE_TIME"])
             print "lenght", data[i]["AWAKE_TIME"], total_irrigation_time
         if i == len(data)-1 and data[i]["ON_OFF_STATE"] == 1:
-            total_irrigation_time  += float(data[i]["AWAKE_TIME"])
-            print "lenght end", data[i]["AWAKE_TIME"], total_irrigation_time
+            #total_irrigation_time  += float(data[i]["AWAKE_TIME"])
+            print "ez most nincs lenght end", data[i]["AWAKE_TIME"], total_irrigation_time
     total_irrigation_time += float(data_device[device_id].AWAKE_TIME_X)
+    print "total_irrigation_time", total_irrigation_time
     for row_scheduled in column_scheduled:
+        print "row_scheduled[DONE_FOR_TODAY]", row_scheduled['DONE_FOR_TODAY']
         if datetime.datetime.now().time() > row_scheduled['ON_TIME'] < (datetime.datetime.now() + datetime.timedelta(hours=3)).time() and (total_irrigation_time-10) < row_scheduled['ON_TIME_LENGHT']*60 and not row_scheduled['DONE_FOR_TODAY'] and not row_scheduled['ON_TIME_LITERS'] and not row_scheduled['ON_TIME_MM']:
             if (int(weather_code/100) == 2 or int(weather_code/100) == 5):
                 print ("Eso vagy vihar van, ne legyen ontozes")
@@ -349,7 +352,6 @@ def get_past3h_mm(latitude,longitude):
 
 def get_wheather_code(latitude,longitude):
     weather = owm.weather_at_coords(latitude, longitude).get_weather()
-    print ("weather code:", datetime.datetime.now(), weather.get_weather_code())
     return weather.get_weather_code()
 
 def temperature_points():
@@ -367,7 +369,7 @@ def temperature_points():
             if(35<row['DAILY_MAX']):     temperature_points += 6
             if(temperature_points >= row["IRRIGATION_ON_TEMPERATURE"]): 
                 conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(temperature_points - row["IRRIGATION_ON_TEMPERATURE"]) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-                if forecast_mm < 5: #ide rakjak valami olyat hogy csak akkor ha kisebb eső várható mint 10mm
+                if forecast_mm < forecast_mm_limit: #ide rakjak valami olyat hogy csak akkor ha kisebb eső várható mint forecast_mm_limit mm
                     if (row["IRRIGATION_LENGHT"] != 0): conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\'," + str(row["IRRIGATION_LENGHT"]) + ",0,0,0,1)")           
                     if (row["IRRIGATION_MM"] != 0): conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\',0," + str(row["IRRIGATION_MM"]) + ",0,0,1)")           
                     if (row["IRRIGATION_LITERS"] != 0): conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\',0,0," + str(row["IRRIGATION_LITERS"]) + ",0,1)")           
@@ -402,7 +404,7 @@ def irrigation_on_moisture():
         if(10 < moisture < row_devices["MOISTURE_PERCENT"]):
             for row_pairs in collumn_pairs:
                 if (row_devices["DEVICE_ID"] == row_pairs["SENSOR_ID"]):
-                    if get_forecast_mm(row_devices['LATID'], row_devices['LONGIT']) < 10:
+                    if get_forecast_mm(row_devices['LATID'], row_devices['LONGIT']) < forecast_mm_limit:
                         if (row["IRRIGATION_LENGHT"] != 0): conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\'," + str(row["IRRIGATION_LENGHT"]) + ",0,0,0,3)")           
                         if (row["IRRIGATION_MM"] != 0): conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\',0," + str(row["IRRIGATION_MM"]) + ",0,0,3)")           
                         if (row["IRRIGATION_LITERS"] != 0): conn.execute("insert into scheduled_irrigation_one_time values(\'" + row["DEVICE_ID"] + "\',\'" + str(row["IRRIGATION_TIME"]) + "\',0,0," + str(row["IRRIGATION_LITERS"]) + ",0,3)")
@@ -458,21 +460,3 @@ while 1:
     print "loop completed:", loop, "\n"
     loop +=1    
     time.sleep(600)
-"""
-#bonyolultabb és erőforrásigényesebb, de így az éjszakán átnyúló öntözés is pontos azthiszem   
-while 1:
-    print "server is alive" 
-    print threading.activeCount()
-    collumn=scheduled_irrigation_table.select().execute()
-    for row in collumn:
-        if data.has_key(row["DEVICE_ID"]):
-            if not data[row["DEVICE_ID"]].on_time < datetime.datetime.now() < data[row["DEVICE_ID"]].off_time and not row["TODAY"] == datetime.datetime.now().day:
-                conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0" + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-                conn.execute("UPDATE scheduled_irrigation SET TODAY = " + str(datetime.datetime.now().day) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-        elif not row["TODAY"] == datetime.datetime.now().day:
-            conn.execute("UPDATE scheduled_irrigation SET DONE_FOR_TODAY = 0" + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-            conn.execute("UPDATE scheduled_irrigation SET TODAY = " + str(datetime.datetime.now().day) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
-        print "valami"  
-    print threading.activeCount()    
-    if threading.activeCount() < 2: break #mert ezesetben a mosquito szerverhez kapcsolódó szál valószínűleg leállt
-    time.sleep(600)"""
