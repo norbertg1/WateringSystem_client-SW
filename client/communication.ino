@@ -109,7 +109,7 @@ void setup_wifi() {
   WiFiManagerParameter print_device_ID(device_id, device_id, device_id_wm, 25);
   wifiManager.addParameter(&print_device_ID);
   if( ESP.getResetReason() != "Power on") {             //A setApcallback  meghiv egy funkciot ami az Acess Point működése alatt fog lefutni. Én itt berakom az eszközt deepsleepbe (lambda funkcio, specialitas). De lehet a WIFI_CONFIGURATION_PAGE_TIMEOUT kéne nullára raknom majd kiprobalom.
-    Serial.print("Turn on reason is not \"Power on\" (probably wake up from deepsleep). Therefor AP mode is unnecessary in case of not found know wifi. Entering deepsleep (again) for:"); Serial.print(SLEEP_TIME_NO_WIFI); Serial.println(" s");
+    Serial.print("Turn on reason is not \"Power on\" (probably wake up from deepsleep). Therefor AP mode is unnecessary in case of not found know wifi. Entering deepsleep (again) for:"); Serial.print((int)SLEEP_TIME_NO_WIFI); Serial.println(" s");
     wifiManager.setAPCallback([](WiFiManager * wifi_manager) {go_sleep(SLEEP_TIME_NO_WIFI);}); //wifiManager.setAPCallback(go_sleep_callback); <---ezt igy is lehetne funkcioval
   }
   else wifiManager.setAPCallback(NULL); //probaljam meg kikomentezni
@@ -166,19 +166,199 @@ void web_update_setup() {
 //  Serial.printf("Ready for update through browser! Open http://%s in your browser\n", host);
 }
 
-void web_update(int minutes) {
-  long int i = 0;
+void web_update(long long minutes) {
+  long long i = 0;
   minutes = minutes * 1000 * 3600;
   web_update_setup();
   while (1)     {
     server.handleClient();
     delay(1);
     i++;
-    if (i == minutes) {
+    if (i >= minutes) {
       Serial.println("Timeout reached, restarting");
+      f.close();
       ESP.restart();
     }
   }
 }
 
+void web_log(long long minutes){
+  Serial.println("WEB LOG starting!!!");
+  doFTP();  
+}
 
+
+//FTP stuff
+const char* userName = "odroid";
+const char* password = "odroid";
+
+//File Operation
+
+
+char outBuf[128];
+char outCount;
+
+WiFiClient dclient;
+WiFiClient cclient;
+
+byte doFTP()
+{
+    char fileName[13];
+    sprintf(fileName, "%s%s", "/", device_id);
+    File fh = SPIFFS.open(fileName, "r");
+    if (!fh) {
+      Serial.println("file open failed");
+    }
+  if (cclient.connect(FTP_SERVER,21)) {
+    Serial.println(F("Command connected"));
+  }
+  else {
+    fh.close();
+    Serial.println(F("Command connection failed"));
+    return 0;
+  }
+
+  if(!eRcv()) return 0;
+
+  cclient.print("USER ");
+  cclient.println(userName);
+ 
+  if(!eRcv()) return 0;
+ 
+  cclient.print("PASS ");
+  cclient.println(password);
+ 
+  if(!eRcv()) return 0;
+ 
+  cclient.println("SYST");
+
+  if(!eRcv()) return 0;
+
+  cclient.println("Type I");
+
+  if(!eRcv()) return 0;
+
+  cclient.println("PASV");
+
+  if(!eRcv()) return 0;
+
+  char *tStr = strtok(outBuf,"(,");
+  int array_pasv[6];
+  for ( int i = 0; i < 6; i++) {
+    tStr = strtok(NULL,"(,");
+    array_pasv[i] = atoi(tStr);
+    if(tStr == NULL)
+    {
+      Serial.println(F("Bad PASV Answer"));   
+
+    }
+  }
+
+  unsigned int hiPort,loPort;
+  hiPort=array_pasv[4]<<8;
+  loPort=array_pasv[5]&255;
+  Serial.print(F("Data port: "));
+  hiPort = hiPort|loPort;
+  Serial.println(hiPort);
+  if(dclient.connect(FTP_SERVER, hiPort)){
+    Serial.println("Data connected");
+  }
+  else{
+    Serial.println("Data connection failed");
+    cclient.stop();
+    fh.close();
+  }
+ 
+  cclient.print("STOR ");
+  cclient.println(fileName);
+  if(!eRcv())
+  {
+    dclient.stop();
+    return 0;
+  }
+  Serial.println(F("Writing"));
+ 
+  byte clientBuf[64];
+  int clientCount = 0;
+ 
+  while(fh.available())
+  {
+    clientBuf[clientCount] = fh.read();
+    clientCount++;
+ 
+    if(clientCount > 63)
+    {
+      dclient.write((const uint8_t *)clientBuf, 64);
+      clientCount = 0;
+    }
+  }
+  if(clientCount > 0) dclient.write((const uint8_t *)clientBuf, clientCount);
+
+  dclient.stop();
+  Serial.println(F("Data disconnected"));
+  cclient.println();
+  if(!eRcv()) return 0;
+
+  cclient.println("QUIT");
+
+  if(!eRcv()) return 0;
+
+  cclient.stop();
+  Serial.println(F("Command disconnected"));
+
+  fh.close();
+  Serial.println(F("File closed"));
+  return 1;
+}
+
+byte eRcv()
+{
+  byte respCode;
+  byte thisByte;
+
+  while(!cclient.available()) delay(1);
+
+  respCode = cclient.peek();
+
+  outCount = 0;
+
+  while(cclient.available())
+  { 
+    thisByte = cclient.read();   
+    Serial.write(thisByte);
+
+    if(outCount < 127)
+    {
+      outBuf[outCount] = thisByte;
+      outCount++;     
+      outBuf[outCount] = 0;
+    }
+  }
+
+  if(respCode >= '4')
+  {
+    efail();
+    return 0; 
+  }
+
+  return 1;
+}
+
+
+void efail()
+{
+  byte thisByte = 0;
+
+  cclient.println(F("QUIT"));
+
+  while(!cclient.available()) delay(1);
+
+  while(cclient.available())
+  { 
+    thisByte = cclient.read();   
+    Serial.write(thisByte);
+  }
+
+  cclient.stop();
+  Serial.println(F("Command disconnected"));
+}

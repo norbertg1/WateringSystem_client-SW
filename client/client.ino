@@ -18,6 +18,7 @@ ESP8266WebServer server (80);
 BMP280 bmp;
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
+File f;
 #if SZELEP
 ADC_MODE(ADC_VCC);
 #endif
@@ -36,7 +37,7 @@ int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
 int sleep_time_seconds = 900;                  //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
-int remote_update = 0;
+int remote_update = 0, printout_log=0;
 int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
@@ -50,6 +51,10 @@ void setup() {
   Serial.println(ESP.getResetReason());
   String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   ID.toCharArray(device_id, 25); 
+  f = create_file();
+  Serial.print("ID: ");   Serial.println(ID);
+  Serial.print("MAC: ");   Serial.println(WiFi.macAddress());
+
   get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   setup_pins();
   read_voltage();           //Ez azthiszem kitorolheto
@@ -73,7 +78,17 @@ void setup() {
   Serial.println(ver);
   Serial.println("checking for update");
   t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
-  http_update_answer(ret);  
+  http_update_answer(ret);
+  /*SPIFFS.begin();
+  File f = SPIFFS.open("/log.txt", "a+");
+  if(f.size() > MAX_SPIFFS_FILE_SIZE){      //Ha tul nagy
+    f.close();
+    SPIFFS.remove("log.txt");
+    File f = SPIFFS.open("/log.txt", "a+");
+  }*/
+  println_out("TIMESTAMP idobelyeg");
+  println_out(ID);
+  println_out("elso iras a SPIFFS rendszerbe!");
   //delay(100);
 
 }
@@ -110,10 +125,11 @@ void loop() {
 
   Serial.println("Setting up webupdate if set");
   if (remote_update && valve_state() == 0)  web_update(remote_update);
-  if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  {
-    valve_turn_on();
-  }
-  else  valve_turn_off();
+  if (printout_log && valve_state() == 0)  web_log(printout_log);
+  if (120 && valve_state() == 0)  web_log(120);
+  web_log(120);
+  if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
+  if (!on_off_command || (float)voltage / 1000 < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
   if (valve_state() != 1) {       //ha a szelep nincs nyitva
     if (client.connected()) {
       char buff_f[10];
@@ -235,7 +251,7 @@ void go_sleep_callback(WiFiManager *myWiFiManager){
   go_sleep(SLEEP_TIME_NO_WIFI);
 }
 
-void go_sleep(long long int microseconds){
+void go_sleep(float microseconds){
   valve_turn_off();
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
   espClient.stop();
@@ -243,8 +259,9 @@ void go_sleep(long long int microseconds){
   if(microseconds - micros() > MINIMUM_DEEP_SLEEP_TIME){  //korrekcio a bekapcsolva levo idore 
     microseconds = microseconds - micros();
   }
-
+ 
   Serial.print("Entering in deep sleep for: "); Serial.print((float)microseconds/1000000); Serial.println(" s");
+  f.close();
   delay(100);
   ESP.deepSleep(microseconds); //az elozo sort vonom ki
   delay(100);
@@ -330,5 +347,29 @@ void http_update_answer(t_httpUpdate_return ret){
       Serial.println("[update] Update ok."); // may not called we reboot the ESP
       break;    
   }
+}
+
+File create_file(){
+  SPIFFS.begin();
+  char buff[13];
+  sprintf (buff, "%s%s", "/", device_id);
+  if (!f) {
+    Serial.println("file open failed");
+}
+  File f = SPIFFS.open(buff, "a+");
+  if(f.size() > 10000){      //Ha tul nagy
+    f.close();
+    SPIFFS.remove(buff);
+    File f = SPIFFS.open(buff, "a+");
+  }
+  return f;
+}
+
+void print_out(String str){
+  f.print(str);
+}
+
+void println_out(String str){
+  f.println(str);
 }
 
