@@ -1,12 +1,13 @@
+#include "communication.h"
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {               //ezekre a csatornakra iratkozok fel
   char buff[70];
-  Serial.println("MQTT callback");   
-  Serial.println(topic);
+  println_out("MQTT callback");   
+  println_out(topic);
   sprintf (buff, "%s%s", device_id, "/ON_OFF_COMMAND");
   if (!strcmp(topic, buff)) {
     on_off_command = payload[0] - 48;
-    Serial.print("Valve command: ");  Serial.println(on_off_command);
+    print_out("Valve command: ");  println_out(String(on_off_command));
     mqtt_done++;
   }
   sprintf (buff, "%s%s", device_id, "/DELAY_TIME");
@@ -14,7 +15,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
     for (int i = 0; i < length; i++) buff[i] = (char)payload[i];
     buff[length] = '\n';
     delay_time_seconds = atoi(buff);
-    Serial.print("Delay time_seconds: "); Serial.println(delay_time_seconds);
+    print_out("Delay time_seconds: "); println_out(String(delay_time_seconds));
     mqtt_done++;
   }
   sprintf (buff, "%s%s", device_id, "/SLEEP_TIME");
@@ -22,13 +23,19 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
     for (int i = 0; i < length; i++) buff[i] = (char)payload[i];
     buff[length] = '\n';
     sleep_time_seconds = atoi(buff);
-    Serial.print("Sleep time_seconds: "); Serial.println(sleep_time_seconds);
+    print_out("Sleep time_seconds: "); println_out(String(sleep_time_seconds));
     mqtt_done++;
   }
   sprintf (buff, "%s%s", device_id, "/REMOTE_UPDATE");
   if (!strcmp(topic, buff)) {
     remote_update = payload[0] - 48;
-    Serial.print("Remote update: "); Serial.println(remote_update);
+    print_out("Remote update: "); println_out(String(remote_update));
+    mqtt_done++;
+  }
+  sprintf (buff, "%s%s", device_id, "/REMOTE_LOG");
+  if (!strcmp(topic, buff)) {
+    remote_log = payload[0] - 48;
+    print_out("Remote log: "); println_out(String(remote_log));
     mqtt_done++;
   }
 }
@@ -55,6 +62,8 @@ void mqtt_reconnect() {
       client.loop();
       sprintf (buf_name, "%s%s", device_id, "/REMOTE_UPDATE");
       client.subscribe(buf_name);
+      sprintf (buf_name, "%s%s", device_id, "/REMOTE_LOG");
+      client.subscribe(buf_name);
       mqttsend_i(i, device_id, "/DEBUG");
       client.loop();
     }
@@ -63,8 +72,8 @@ void mqtt_reconnect() {
       espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
       espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
     }
-    Serial.print("\nattempt = "); Serial.print(++i);
-    Serial.print(" The mqtt state is: "); Serial.println(client.state());
+    print_out("attempt = "); print_out(String(++i));
+    print_out(" The mqtt state is: "); println_out(String(client.state()));
   }
 }
 
@@ -91,8 +100,65 @@ void mqttsend_s(const char *payload, char* device_id, char* topic){
 }
 
 void setup_wifi() {
+  println_out("Setting up wifi");
+  WiFi.mode(WIFI_STA);
+  String ssid = WiFi.SSID();
+  String pass = WiFi.psk();
+  Serial.printf("SSID: %s\n", ssid.c_str());
+  Serial.printf("PSK: %s\n", pass.c_str());
+  if( ESP.rtcUserMemoryRead( 0, (uint32_t*)&rtcData, sizeof( rtcData ) ) ) {
+    // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
+    uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
+    rtcData.valid = false;
+    if( crc == rtcData.crc32 ) {
+      rtcData.valid = true;
+    }
+  }
+  if( rtcData.valid ) {
+    // The RTC data was good, make a quick connection
+    println_out("Connecting with know BSSID, channel etc..");
+    WiFi.begin( ssid.c_str(), pass.c_str(), rtcData.channel, rtcData.bssid, true );
+  }
+  else {
+    // The RTC data was not valid, so make a regular connection
+    WiFi.begin(ssid.c_str(), pass.c_str());
+  }
+  int retries = 0;
+  int wifiStatus = WiFi.status();
+  while( wifiStatus != WL_CONNECTED ) {
+    retries++;
+    if( retries == 50 ) {
+      // Quick connect is not working, reset WiFi and try regular connection
+      print_out("\n5s gone, nothing happend. Resetting wifi settings\n");
+      WiFi.disconnect();
+      delay( 10 );
+      WiFi.forceSleepBegin();
+      delay( 10 );
+      WiFi.forceSleepWake();
+      delay( 10 );
+      WiFi.begin(ssid.c_str(), pass.c_str());
+    }
+    if( retries == 300 ) {
+      // Giving up after 30 seconds and going back to sleep
+      //WiFi.disconnect( true ); lehet ez végett felejti el a beállitasokat
+      delay( 1 );
+      if( ESP.getResetReason() == "Power on") start_wifimanager();
+      if ( wifiStatus != WL_CONNECTED ){
+        WiFi.mode( WIFI_OFF );
+        go_sleep(SLEEP_TIME_NO_WIFI);
+        return; // Not expecting this to be called, the previous call will never return.
+      }
+    }
+    delay( 100 );
+    wifiStatus = WiFi.status();
+    Serial.print(".");
+  }
+  rtcData.channel = WiFi.channel();
+  memcpy( rtcData.bssid, WiFi.BSSID(), 6 ); // Copy 6 bytes of BSSID (AP's MAC address)
+}
 
-  Serial.println("Setting up wifi");
+void start_wifimanager() {
+  print_out("Turn on reason is \"Power on\" starting wifimanager config portal");
   char device_id_wm[25];
 #if SZELEP
   String AP_name = "szelepvezerlo ";
@@ -102,26 +168,11 @@ void setup_wifi() {
   AP_name += String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   ID.toCharArray(device_id_wm, 25);
-
-  WiFi.mode(WIFI_STA);
   WiFiManager wifiManager;
-
   WiFiManagerParameter print_device_ID(device_id, device_id, device_id_wm, 25);
   wifiManager.addParameter(&print_device_ID);
-  if( ESP.getResetReason() != "Power on") {             //A setApcallback  meghiv egy funkciot ami az Acess Point működése alatt fog lefutni. Én itt berakom az eszközt deepsleepbe (lambda funkcio, specialitas). De lehet a WIFI_CONFIGURATION_PAGE_TIMEOUT kéne nullára raknom majd kiprobalom.
-    Serial.print("Turn on reason is not \"Power on\" (probably wake up from deepsleep). Therefor AP mode is unnecessary in case of not found know wifi. Entering deepsleep (again) for:"); Serial.print((int)SLEEP_TIME_NO_WIFI); Serial.println(" s");
-    wifiManager.setAPCallback([](WiFiManager * wifi_manager) {go_sleep(SLEEP_TIME_NO_WIFI);}); //wifiManager.setAPCallback(go_sleep_callback); <---ezt igy is lehetne funkcioval
-  }
-  else wifiManager.setAPCallback(NULL); //probaljam meg kikomentezni
   wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
-  //if(ESP.getResetReason() == "Power on")  wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
-  //else  wifiManager.setConfigPortalTimeout(0);
-  wifiManager.setConnectTimeout(WIFI_CONNECTION_TIMEOUT);
-  if (!wifiManager.autoConnect(AP_name.c_str())) {
-    Serial.println("Failed to connect and hit timeout. Entering deep sleep!");
-    //valve_turn_off();
-    go_sleep(SLEEP_TIME_NO_WIFI);
-  }
+  wifiManager.startConfigPortal(AP_name.c_str());
 }
 
 void web_update_setup() {
@@ -175,25 +226,24 @@ void web_update(long long minutes) {
     delay(1);
     i++;
     if (i >= minutes) {
-      Serial.println("Timeout reached, restarting");
-      f.close();
+      println_out("Timeout reached, restarting");
+      close_file();
       ESP.restart();
     }
   }
 }
 
-void web_log(long long minutes){
-  Serial.println("WEB LOG starting!!!");
-  doFTP();  
+void send_log(){
+#if FILE_SYSTEM  
+  println_out("REMOTE LOG starting!!!");
+  doFTP();
+#endif
 }
 
 
 //FTP stuff
 const char* userName = "odroid";
 const char* password = "odroid";
-
-//File Operation
-
 
 char outBuf[128];
 char outCount;
@@ -207,14 +257,14 @@ byte doFTP()
     sprintf(fileName, "%s%s", "/", device_id);
     File fh = SPIFFS.open(fileName, "r");
     if (!fh) {
-      Serial.println("file open failed");
+      println_out("file open failed");
     }
   if (cclient.connect(FTP_SERVER,21)) {
-    Serial.println(F("Command connected"));
+    println_out(F("Command connected"));
   }
   else {
     fh.close();
-    Serial.println(F("Command connection failed"));
+    println_out(F("Command connection failed"));
     return 0;
   }
 
@@ -249,7 +299,7 @@ byte doFTP()
     array_pasv[i] = atoi(tStr);
     if(tStr == NULL)
     {
-      Serial.println(F("Bad PASV Answer"));   
+      println_out(F("Bad PASV Answer"));   
 
     }
   }
@@ -257,14 +307,14 @@ byte doFTP()
   unsigned int hiPort,loPort;
   hiPort=array_pasv[4]<<8;
   loPort=array_pasv[5]&255;
-  Serial.print(F("Data port: "));
+  //print_out(F("Data port: "));
   hiPort = hiPort|loPort;
-  Serial.println(hiPort);
+  //println_out(String(hiPort));
   if(dclient.connect(FTP_SERVER, hiPort)){
-    Serial.println("Data connected");
+    println_out("Data connected");
   }
   else{
-    Serial.println("Data connection failed");
+    println_out("Data connection failed");
     cclient.stop();
     fh.close();
   }
@@ -276,7 +326,7 @@ byte doFTP()
     dclient.stop();
     return 0;
   }
-  Serial.println(F("Writing"));
+  //println_out(F("Writing"));
  
   byte clientBuf[64];
   int clientCount = 0;
@@ -295,7 +345,7 @@ byte doFTP()
   if(clientCount > 0) dclient.write((const uint8_t *)clientBuf, clientCount);
 
   dclient.stop();
-  Serial.println(F("Data disconnected"));
+  println_out(F("Data disconnected"));
   cclient.println();
   if(!eRcv()) return 0;
 
@@ -304,10 +354,10 @@ byte doFTP()
   if(!eRcv()) return 0;
 
   cclient.stop();
-  Serial.println(F("Command disconnected"));
+  println_out(F("Command disconnected"));
 
   fh.close();
-  Serial.println(F("File closed"));
+  println_out(F("File closed"));
   return 1;
 }
 
@@ -360,5 +410,25 @@ void efail()
   }
 
   cclient.stop();
-  Serial.println(F("Command disconnected"));
+  println_out(F("Command disconnected"));
+}
+
+uint32_t calculateCRC32( const uint8_t *data, size_t length ) {
+  uint32_t crc = 0xffffffff;
+  while( length-- ) {
+    uint8_t c = *data++;
+    for( uint32_t i = 0x80; i > 0; i >>= 1 ) {
+      bool bit = crc & 0x80000000;
+      if( c & i ) {
+        bit = !bit;
+      }
+
+      crc <<= 1;
+      if( bit ) {
+        crc ^= 0x04c11db7;
+      }
+    }
+  }
+
+  return crc;
 }

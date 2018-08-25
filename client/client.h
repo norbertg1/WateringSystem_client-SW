@@ -21,16 +21,16 @@
 #include <EEPROM.h>
 #include <ESP8266httpUpdate.h>
 #include "FS.h"
-
+#include <time.h>
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
-#define WIFI_CONNECTION_TIMEOUT           40                              //Time for connecting to wifi in seconds
+#define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  30                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-#define VERSION                           "v1.40"
+#define VERSION                           "v1.49"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -56,10 +56,14 @@
 #define FTP_SERVER                        "192.168.1.12"
 #define FLOWMETER_CALIB_VOLUME            450.0 //Pulses per Liter: 450
 #define FLOWMETER_CALIB_VELOCITY          7.5   //Pulse frequency (Hz) / 7.5 = flow rate in L/min
+#define MINIMUM_UPDATE_VOLTAGE            3.1   //If valve is closed
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.1   //If valve is closed
 #define VALVE_CLOSE_VOLTAGE               3.05   //If valve is open
-#define MAX_SPIFFS_FILE_SIZE              10000
+#define MAX_LOG_FILE_SIZE                 204800
 #define SZELEP                            0
+#define FILE_SYSTEM                       1
+#define SERIAL_PORT                       1
+#define CONFIG_TIME                       1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
 /*
 //--------------------------------------------------------------------old---------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -74,10 +78,9 @@
 //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 */
 
-
 void valve_turn_on();
 void valve_turn_off();
-int valve_state();
+int  valve_state();
 void valve_test();
 void flow_meter_calculate_velocity();
 void get_TempPressure();
@@ -90,7 +93,7 @@ void http_update_answer(t_httpUpdate_return ret);
 void mqttsend_i(int payload, char* device_id, char* topic);
 void mqttsend_d(double payload, char* device_id, char* topic, char precision);
 File create_file();
-
+void close_file();
 
 extern char device_id[25];
 

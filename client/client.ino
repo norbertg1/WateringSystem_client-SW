@@ -1,3 +1,6 @@
+
+
+
 /*
    This program login into ESP8266_locsolo_server on ubuntu. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature, etc.
    When A0 is HIGH: ESP8266 loggin happens every 30seconds, if it is LOW ---> deep sleep for x seconds
@@ -7,6 +10,8 @@
    az mqtt_reconnect() funkció csak 3-4 próbálkozás alatt tud sikeresen visszacsatlakozni, felette már nem. Ezt a az opciót bekapcsolva viszont bármennyi próbálkozás után sikeres lehet az újracsatlakozás
 
    v2.4.1 verzióban Tools --> lwIP Variant --> v1.4 Compile from source opció (többit nem teszteltem, kivéve: defaulnál (v2 Lower Memory) nem működik) szükséges a TLS MQTT titkosított kapcsolat működéséhez
+
+   Wifihez csatlakozás: Bekapcsolni a kapcsolóval, beírni a csatalkozási adatokat, majd ki be kapcsolni ismét a kapcsolóval.
 */
 #include "client.h"
 #include "certificates.h"
@@ -37,7 +42,7 @@ int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW;
 int sleep_time_seconds = 900;                  //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
-int remote_update = 0, printout_log=0;
+int remote_update = 0, remote_log=0;
 int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
@@ -45,52 +50,40 @@ String ver;
 int mqtt_done=0;
 
 void setup() {
+  if( ESP.getResetReason() != "Power on" && ESP.getResetReason() != "Deep-Sleep Wake" && ESP.getResetReason() != "Software/System restart") alternative_startup();
   Serial.begin(115200);
-  delay(100);
-  Serial.print("\nESP8266 alive\n");
-  Serial.println(ESP.getResetReason());
+  delay(50);
   String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   ID.toCharArray(device_id, 25); 
+  format();
   f = create_file();
-  Serial.print("ID: ");   Serial.println(ID);
-  Serial.print("MAC: ");   Serial.println(WiFi.macAddress());
-
+  println_out("\n-----------------------ESP8266 alive----------------------------------------\n");
+  println_out(ESP.getResetReason());
+  print_out("ID: ");   println_out(ID);
+  print_out("MAC: ");   println_out(WiFi.macAddress());
   get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   setup_pins();
-  read_voltage();           //Ez azthiszem kitorolheto
   if (valve_state) valve_turn_off();  
-  Serial.println("Setting up certificates");
+  println_out("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
   espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
-  Serial.println("Setting up mqtt callback, wifi");
+  println_out("Setting up mqtt callback, wifi");
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
   setup_wifi();
-  Serial.println("IP address:  ");
-  Serial.println(WiFi.localIP());
-  Serial.print("RSSI: ");
-  Serial.println(WiFi.RSSI());
-  //while(1){delay(100); RSSI_value = WiFi.RSSI(); Serial.println(RSSI_value);}
-  configTime(1 * 3600, 3600, "pool.ntp.org", "time.nist.gov");
-  ver = VERSION;
-  ver += '.';
-  ver += SZELEP;
-  Serial.println(ver);
-  Serial.println("checking for update");
-  t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
-  http_update_answer(ret);
-  /*SPIFFS.begin();
-  File f = SPIFFS.open("/log.txt", "a+");
-  if(f.size() > MAX_SPIFFS_FILE_SIZE){      //Ha tul nagy
-    f.close();
-    SPIFFS.remove("log.txt");
-    File f = SPIFFS.open("/log.txt", "a+");
-  }*/
-  println_out("TIMESTAMP idobelyeg");
-  println_out(ID);
-  println_out("elso iras a SPIFFS rendszerbe!");
-  //delay(100);
-
+  print_out("IP address:  ");
+  println_out(String(WiFi.localIP()));
+  print_out("RSSI: ");
+  println_out(String(WiFi.RSSI()));
+  ver = VERSION;  ver += '.';  ver += SZELEP;
+  print_out("version:"); println_out(ver);
+  if(voltage > MINIMUM_UPDATE_VOLTAGE) 
+  {
+    println_out("checking for update");
+    t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
+    http_update_answer(ret);
+  }
+  config_time();
 }
 
 void loop() {
@@ -104,9 +97,13 @@ void loop() {
     char buf[10];
     mqtt_done=0;
     client.loop();
+    println_out("sending temperature");
     mqttsend_d(T, device_id, "/TEMPERATURE", 1);
+    println_out("sending moisture");
     mqttsend_d(moisture, device_id, "/MOISTURE", 2);
+    println_out("sending RSSI");
     mqttsend_i(WiFi.RSSI(), device_id, "/RSSI");
+    println_out("sending voltage,etc..");
     mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
     mqttsend_d(P, device_id, "/PRESSURE", 3);
     mqttsend_s(ver.c_str(), device_id, "/VERSION");
@@ -115,26 +112,24 @@ void loop() {
     mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
     mqttsend_i(0, device_id, "/READY_FOR_DATA");
     //delay(3000);
+    println_out("Waiting for commands");
     client.loop();
     for (int i = 0; i < 200; i++) {    //Ez mire van? torolni ha nem kell
       delay(100);
       client.loop();                  //Itt várok az adatra, talán szebben is lehetne
-      if (mqtt_done == 4) break;
+      if (mqtt_done == 5) break;
     }
   }
 
-  Serial.println("Setting up webupdate if set");
+  println_out("Setting up webupdate if set");
   if (remote_update && valve_state() == 0)  web_update(remote_update);
-  if (printout_log && valve_state() == 0)  web_log(printout_log);
-  if (120 && valve_state() == 0)  web_log(120);
-  web_log(120);
   if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
   if (!on_off_command || (float)voltage / 1000 < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
   if (valve_state() != 1) {       //ha a szelep nincs nyitva
     if (client.connected()) {
       char buff_f[10];
       char buf_name[50];
-      Serial.print("Valve state: "); Serial.println(valve_state());
+      print_out("Valve state: "); println_out(String(valve_state()));
       mqttsend_i(0, device_id, "/ON_OFF_STATE");
       //mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);      //ez törölhető csak figyelem van-e indokolatlan megszakítás
       //mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);  //ez törölhető csak figyelem van-e indokolatlan megszakítás
@@ -146,7 +141,7 @@ void loop() {
     go_sleep(SLEEP_TIME);    
   }
   else   {                        //ha a szelep nyitva van
-    Serial.print("Valve state: "); Serial.println(valve_state());
+    print_out("Valve state: "); println_out(String(valve_state()));
     flow_meter_calculate_velocity();
     mqtt_reconnect();
     if (client.connected()) {
@@ -162,8 +157,8 @@ void loop() {
       delay(100);
       client.disconnect();
     }
-    Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
-    Serial.println("delay");
+    print_out("time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
+    println_out("delay");
     delay(DELAY_TIME);
     on_off_command = 0;
     detachInterrupt(FLOWMETER_PIN);
@@ -177,7 +172,7 @@ void loop() {
 void valve_turn_on() {
 #if SZELEP
   digitalWrite(GPIO15, HIGH); //VOLTAGE BOOST
-  Serial.println("Valve_turn_on()");
+  println_out("Valve_turn_on()");
   pinMode(FLOWMETER_PIN, INPUT);
   attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
@@ -187,14 +182,14 @@ void valve_turn_on() {
     delay(100);
   }
   if (valve_state) locsolo_state = HIGH;
-  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {Serial.println("Error turn on timeout reached");  valve_timeout=1;}
+  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {println_out("Error turn on timeout reached");  valve_timeout=1;}
 #endif
 }
 
 void valve_turn_off() {
 #if SZELEP
   bool closing_flag=0;
-  Serial.println("Valve_turn_off");
+  println_out("Valve_turn_off");
   uint16_t cnt = 0;
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
@@ -211,7 +206,7 @@ void valve_turn_off() {
   if (!valve_state) locsolo_state = LOW;
   digitalWrite(GPIO15, LOW);  //VOLTAGE_BOOST
   detachInterrupt(FLOWMETER_PIN); 
-  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {Serial.println("Error turn off timeout reached");  valve_timeout=1;}
+  if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {println_out("Error turn off timeout reached");  valve_timeout=1;}
 #endif
 }
 
@@ -231,9 +226,9 @@ int valve_state() {
 }
 
 void valve_test(){
-    while(1){
-      valve_turn_off();
-      valve_turn_on();
+  while(1){
+    valve_turn_off();
+    valve_turn_on();
     delay(100);
     }
 }
@@ -254,14 +249,26 @@ void go_sleep_callback(WiFiManager *myWiFiManager){
 void go_sleep(float microseconds){
   valve_turn_off();
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
+  if (remote_log)  send_log();
   espClient.stop();
+  print_out("time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
   Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
   if(microseconds - micros() > MINIMUM_DEEP_SLEEP_TIME){  //korrekcio a bekapcsolva levo idore 
     microseconds = microseconds - micros();
   }
  
-  Serial.print("Entering in deep sleep for: "); Serial.print((float)microseconds/1000000); Serial.println(" s");
-  f.close();
+  time_t now = time(nullptr);
+  if(now == 0 && rtcData.valid){
+    rtcData.epoch += (time_t)millis()/1000; //Az RTCben tárolt epoch értékehz hozzáadom a bekapolcst állapotban levő időhosszt
+    now = rtcData.epoch;  //Az RTCben tárolt érték lesz a jelenlegi időpont
+  }
+  else rtcData.epoch = now;
+  rtcData.epoch += (time_t)microseconds/1000000; //Az RTCbet tárolt epoch értékét megnövelem az deepsleep állapotban levő időhosszal
+  println_out("");
+  println_out(ctime(&now));
+  RTC_save();
+  print_out("Entering in deep sleep for: "); print_out(String((float)microseconds/1000000)); println_out(" s");
+  close_file();
   delay(100);
   ESP.deepSleep(microseconds); //az elozo sort vonom ki
   delay(100);
@@ -280,96 +287,170 @@ void flow_meter_calculate_velocity(){
   last_int_time = millis();
   last_int = flowmeter_int;
 
-  Serial.print("Flowmeter volume: "); Serial.print(flowmeter_volume); Serial.println(" L");
-  Serial.print("Flowmeter velocity: "); Serial.print(flowmeter_velocity); Serial.println(" L/min");
+  print_out("Flowmeter volume: "); print_out(String(flowmeter_volume)); println_out(" L");
+  print_out("Flowmeter velocity: "); print_out(String(flowmeter_velocity)); println_out(" L/min");
 }
 
 void read_voltage(){
 #if !SZELEP  
   digitalWrite(GPIO15, 0);        //FSA3157 digital switch
   digitalWrite(RXD_VCC_PIN, 1);
-  delay(200);
+  delay(100); //2018.aug.25
   voltage = 0;
   for (int j = 0; j < 20; j++) voltage+=analogRead(A0); // for new design
-  voltage = (voltage / 20)*4.7272*1.039;                         //4.7272 is the resistor divider value, 1.039 is empirical for ESP8266
-  Serial.print("Voltage:");  Serial.println(voltage);
+  //voltage = (voltage / 20)*4.7272*1.039;                         //4.7272 is the resistor divider value, 1.039 is empirical for ESP8266
+  voltage = (voltage / 20)*4.7272*0.957;                                 //82039a-1640ef, 2018.aug.15
+  print_out("Voltage:");  println_out(String(voltage));
   digitalWrite(RXD_VCC_PIN, 0);
 #else
   voltage = 0;
   for (int j = 0; j < 10; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
   voltage = (voltage / 10) - VOLTAGE_CALIB; //-0.2V
-  Serial.print("Voltage:");  Serial.println(voltage);
+  print_out("Voltage:");  println_out(String(voltage));
 #endif
   }
 
 void read_moisture(){  
 #if !SZELEP
   digitalWrite(GPIO15, 1);          //FSA3157 digital switch
-  delay(1000);
+  delay(100);
   moisture = 0;
   for (int j = 0; j < 20; j++) moisture += analogRead(A0);
   moisture = (((float)moisture / 20) / 1024.0) * 100;
-  Serial.print("Moisture:");  Serial.println(moisture);
+  print_out("Moisture:");  println_out(String(moisture));
   digitalWrite(GPIO15, 0);
-  delay(100);
+  delay(10);
 #endif  
 }
 
 void get_TempPressure(){
   
   if (!bmp.begin(SDA,SCL))  {
-    Serial.println("BMP init failed!");
-    //bmp.setOversampling(16);
+    println_out("BMP init failed!");
+    bmp.setOversampling(16);
   }
-  else {Serial.println("BMP init success!"); bmp.setOversampling(16);}
+  else {println_out("BMP init success!"); bmp.setOversampling(16);}
   double t = 0, p = 0;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 3; i++) {
     delay(bmp.startMeasurment());
     bmp.getTemperatureAndPressure(T, P);
     t += T;
     p += P;
   }
-  T = t / 5;
-  P = p / 5;
-  Serial.print("T=");     Serial.print(T);
-  Serial.print("   P=");  Serial.println(P);
+  T = t / 3;
+  P = p / 3;
+  print_out("T=");     print_out(String(T));
+  print_out("   P=");  println_out(String(P));
 }
 
 void http_update_answer(t_httpUpdate_return ret){
   switch(ret) {
     case HTTP_UPDATE_FAILED:
-      Serial.println("[update] Update failed.");
+      println_out("[update] Update failed.");
       break;
     case HTTP_UPDATE_NO_UPDATES:
-      Serial.println("[update] Update no Update.");
+      println_out("[update] Update no Update.");
       break;
     case HTTP_UPDATE_OK:
-      Serial.println("[update] Update ok."); // may not called we reboot the ESP
+      println_out("[update] Update ok."); // may not called we reboot the ESP
       break;    
   }
 }
 
 File create_file(){
+#if FILE_SYSTEM  
   SPIFFS.begin();
   char buff[13];
   sprintf (buff, "%s%s", "/", device_id);
-  if (!f) {
-    Serial.println("file open failed");
-}
   File f = SPIFFS.open(buff, "a+");
-  if(f.size() > 10000){      //Ha tul nagy
+  if (!f) {
+    Serial.println("log file open failed");
+    SPIFFS.remove(buff);
+    format_now();
+  }
+  if(f.size() > MAX_LOG_FILE_SIZE){      //Ha tul nagy
     f.close();
     SPIFFS.remove(buff);
     File f = SPIFFS.open(buff, "a+");
   }
+  f.print("\nfile size:");
+  f.print(f.size());
+  Serial.print("\nfile size:");
+  Serial.print(f.size());
   return f;
+#endif
+}
+
+void close_file(){
+#if FILE_SYSTEM
+  f.close();
+#endif
 }
 
 void print_out(String str){
+#if SERIAL_PORT  
+  Serial.print(str);
+#endif
+#if FILE_SYSTEM  
   f.print(str);
+#endif
 }
 
 void println_out(String str){
+#if SERIAL_PORT
+  Serial.println(str);
+  Serial.print((float)millis()/1000); Serial.print(":");
+#endif
+#if FILE_SYSTEM
   f.println(str);
+  f.print((float)millis()/1000); f.print(":");
+#endif
+}
+
+void config_time(){
+#ifdef CONFIG_TIME
+  configTime(2 * 3600, 3600, "pool.ntp.org", "time.nist.gov", "time.google.com");
+  print_out("Get current time request");
+#endif
+}
+
+void format(){
+#if FILE_SYSTEM
+  SPIFFS.begin();
+  if (!SPIFFS.exists("/formok")) {
+    Serial.println("Please wait 30 secs for SPIFFS to be formatted");
+    if(SPIFFS.format()) Serial.println("Spiffs formatted");
+    File file = SPIFFS.open("/formok", "w");
+    if (!file) {
+        Serial.println("file open failed");
+    } else {
+        file.println("Format Complete");
+        file.close();
+        Serial.println("format file written and closed");
+    }
+  } else {
+    println_out("SPIFFS is formatted. Moving along...");
+  }
+#endif
+}
+
+void format_now(){
+#if FILE_SYSTEM
+  if(SPIFFS.format()) Serial.println("Spiffs formatted");
+  else Serial.println("Spiffs format failed");
+#endif
+}
+
+void alternative_startup(){
+  SPIFFS.end();
+  setup_wifi();
+  t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
+  http_update_answer(ret);
+}
+
+void RTC_save(){
+  print_out("\nSaving BSSID, channel and time to RTC memory\n");
+  rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
+  ESP.rtcUserMemoryWrite( 0, (uint32_t*)&rtcData, sizeof( rtcData ) );
 }
 
