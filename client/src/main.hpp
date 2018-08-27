@@ -1,5 +1,5 @@
-#ifndef CLIENT_H
-#define CLIENT_H
+#ifndef MAIN_H
+#define MAIN_H
 /*
    This program login into ESP8266_locsolo_server on ubuntu. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature, etc.
    When A0 is HIGH: ESP8266 loggin happens every 30seconds, if it is LOW ---> deep sleep for x seconds
@@ -7,21 +7,11 @@
 
    3V alatt ne nyisson ki a szelep, de ha nyitva van akkor legyen egy deltaU feszĂĽltsĂ©g ami alatt csukodk be (pl 2.9V)
 */
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
-#include <ESP8266HTTPClient.h>
-#include <DHT.h>
-#include <Ticker.h>
-#include <DNSServer.h>
-#include "BMP280.h"
-#include <PubSubClient.h>
-#include <WiFiUdp.h>
-#include <EEPROM.h>
-#include <ESP8266httpUpdate.h>
+#include <Arduino.h>
 #include "FS.h"
-#include <time.h>
+#include <WiFiManager.h> 
+#include <PubSubClient.h>
+#include <ESP8266httpUpdate.h>
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
@@ -94,10 +84,27 @@ void mqttsend_i(int payload, char* device_id, char* topic);
 void mqttsend_d(double payload, char* device_id, char* topic, char precision);
 File create_file();
 void close_file();
+void print_out(String str);
+void println_out(String str);
+void alternative_startup();
+void format();
+void setup_pins();
+void config_time();
+void flow_meter_interrupt();
+void RTC_save();
+void format_now();
+
+extern WiFiClientSecure espClient;
+extern PubSubClient client;
+extern ESP8266WebServer server;
 
 extern char device_id[25];
-
 extern const char* mosquitto_user;
 extern const char* mosquitto_pass;
+extern int on_off_command;
+extern int mqtt_done;
+extern int sleep_time_seconds;
+extern int delay_time_seconds; 
+extern int remote_update, remote_log;
 
 #endif

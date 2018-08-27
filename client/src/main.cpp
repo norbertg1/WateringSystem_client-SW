@@ -1,6 +1,3 @@
-
-
-
 /*
    This program login into ESP8266_locsolo_server on ubuntu. Gets the A0 pin status from the server then set it. Also send Vcc voltage and temperature, etc.
    When A0 is HIGH: ESP8266 loggin happens every 30seconds, if it is LOW ---> deep sleep for x seconds
@@ -13,10 +10,24 @@
 
    Wifihez csatlakozás: Bekapcsolni a kapcsolóval, beírni a csatalkozási adatokat, majd ki be kapcsolni ismét a kapcsolóval.
 */
-#include "client.h"
+#include "main.hpp"
+#include "communication.hpp"
 #include "certificates.h"
-#include "communication.h"
-
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+#include <ESP8266HTTPClient.h>
+#include <DHT.h>
+#include <Ticker.h>
+#include <DNSServer.h>
+#include "BMP280.h"
+#include <PubSubClient.h>
+#include <WiFiUdp.h>
+#include <EEPROM.h>
+#include <ESP8266httpUpdate.h>
+#include "FS.h"
+#include <time.h>
 
 //DHT dht(DHT_PIN, DHT_TYPE);
 ESP8266WebServer server (80);
@@ -34,7 +45,6 @@ const char* mosquitto_pass = "titok";
 char device_id[25];
 int mqtt_port= 8883;
 
-const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
 uint32_t voltage;
 double T, P;
 float temp, temperature, moisture;
@@ -93,8 +103,6 @@ void loop() {
   mqtt_reconnect();
   //flow_meter_calculate_velocity(); 
   if (client.connected()) {
-    char buf_name[50];
-    char buf[10];
     mqtt_done=0;
     client.loop();
     println_out("sending temperature");
@@ -127,12 +135,8 @@ void loop() {
   if (!on_off_command || (float)voltage / 1000 < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
   if (valve_state() != 1) {       //ha a szelep nincs nyitva
     if (client.connected()) {
-      char buff_f[10];
-      char buf_name[50];
       print_out("Valve state: "); println_out(String(valve_state()));
       mqttsend_i(0, device_id, "/ON_OFF_STATE");
-      //mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);      //ez törölhető csak figyelem van-e indokolatlan megszakítás
-      //mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);  //ez törölhető csak figyelem van-e indokolatlan megszakítás
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
       mqttsend_i(0, device_id, "/END");
       delay(100);
@@ -145,8 +149,6 @@ void loop() {
     flow_meter_calculate_velocity();
     mqtt_reconnect();
     if (client.connected()) {
-      char buff_f[10];
-      char buf_name[50];
       client.loop();
       mqttsend_i(1, device_id, "/ON_OFF_STATE");
       mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
@@ -453,4 +455,3 @@ void RTC_save(){
   rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
   ESP.rtcUserMemoryWrite( 0, (uint32_t*)&rtcData, sizeof( rtcData ) );
 }
-

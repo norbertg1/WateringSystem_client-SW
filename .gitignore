@@ -47,4 +47,5 @@
 
 #directories
 PCB/altium/**/
+client_old/**
 

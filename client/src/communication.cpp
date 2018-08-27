@@ -1,6 +1,11 @@
-#include "communication.h"
+#include "communication.hpp"
+#include "main.hpp"
+#include "certificates.h"
 
-void mqtt_callback(char* topic, byte* payload, unsigned int length) {               //ezekre a csatornakra iratkozok fel
+const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
+struct RTCData rtcData;
+
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezekre a csatornakra iratkozok fel
   char buff[70];
   println_out("MQTT callback");   
   println_out(topic);
@@ -12,7 +17,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
   }
   sprintf (buff, "%s%s", device_id, "/DELAY_TIME");
   if (!strcmp(topic, buff)) {
-    for (int i = 0; i < length; i++) buff[i] = (char)payload[i];
+    for (uint i = 0; i < length; i++) buff[i] = (char)payload[i];
     buff[length] = '\n';
     delay_time_seconds = atoi(buff);
     print_out("Delay time_seconds: "); println_out(String(delay_time_seconds));
@@ -20,7 +25,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
   }
   sprintf (buff, "%s%s", device_id, "/SLEEP_TIME");
   if (!strcmp(topic, buff)) {
-    for (int i = 0; i < length; i++) buff[i] = (char)payload[i];
+    for (uint i = 0; i < length; i++) buff[i] = (char)payload[i];
     buff[length] = '\n';
     sleep_time_seconds = atoi(buff);
     print_out("Sleep time_seconds: "); println_out(String(sleep_time_seconds));
@@ -41,6 +46,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {           
 }
 
 void mqtt_reconnect() {
+  rtcData.channel=4;
   char buf_name[50];
   int i=0;
   int attempts = 3;
