@@ -60,7 +60,7 @@ String ver;
 int mqtt_done=0;
 
 void setup() {
-  if( ESP.getResetReason() != "Power on" && ESP.getResetReason() != "Deep-Sleep Wake" && ESP.getResetReason() != "Software/System restart") alternative_startup();
+  if( ESP.getResetReason() != "Power on" && ESP.getResetReason() != "Deep-Sleep Wake" && ESP.getResetReason() != "Software/System restart") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
   Serial.begin(115200);
   delay(50);
   String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
@@ -69,10 +69,13 @@ void setup() {
   f = create_file();
   println_out("\n-----------------------ESP8266 alive----------------------------------------\n");
   println_out(ESP.getResetReason());
+  setup_wifi();
   print_out("ID: ");   println_out(ID);
   print_out("MAC: ");   println_out(WiFi.macAddress());
   get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   setup_pins();
+  read_voltage();
+  read_moisture();
   if (valve_state) valve_turn_off();  
   println_out("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
@@ -80,7 +83,8 @@ void setup() {
   println_out("Setting up mqtt callback, wifi");
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
-  setup_wifi();
+  config_time();
+  Wait_for_WiFi();
   print_out("IP address:  ");
   println_out(String(WiFi.localIP()));
   print_out("RSSI: ");
@@ -89,19 +93,15 @@ void setup() {
   print_out("version:"); println_out(ver);
   if(voltage > MINIMUM_UPDATE_VOLTAGE) 
   {
-    println_out("checking for update");
+    println_out("checking for update!");
     t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
     http_update_answer(ret);
   }
-  config_time();
 }
 
 void loop() {
   //valve_test();
-  read_voltage();
-  read_moisture();
   mqtt_reconnect();
-  //flow_meter_calculate_velocity(); 
   if (client.connected()) {
     mqtt_done=0;
     client.loop();
@@ -119,20 +119,18 @@ void loop() {
     mqttsend_d((float)flowmeter_int / FLOWMETER_CALIB_VOLUME, device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
     mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
     mqttsend_i(0, device_id, "/READY_FOR_DATA");
-    //delay(3000);
-    println_out("Waiting for commands");
+    print_out("Waiting for commands");
     client.loop();
     for (int i = 0; i < 200; i++) {    //Ez mire van? torolni ha nem kell
       delay(100);
       client.loop();                  //Itt várok az adatra, talán szebben is lehetne
       if (mqtt_done == 5) break;
+      print_out(".");
     }
   }
-
-  println_out("Setting up webupdate if set");
-  if (remote_update && valve_state() == 0)  web_update(remote_update);
-  if (on_off_command && (float)voltage / 1000 > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
-  if (!on_off_command || (float)voltage / 1000 < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
+  if (remote_update && valve_state() == 0)  {web_update(remote_update); println_out("\nSetting up Webupdate");}
+  if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
+  if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
   if (valve_state() != 1) {       //ha a szelep nincs nyitva
     if (client.connected()) {
       print_out("Valve state: "); println_out(String(valve_state()));
@@ -159,8 +157,8 @@ void loop() {
       delay(100);
       client.disconnect();
     }
-    print_out("time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
-    println_out("delay");
+    print_out("Time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
+    println_out("Delay");
     delay(DELAY_TIME);
     on_off_command = 0;
     detachInterrupt(FLOWMETER_PIN);
@@ -446,6 +444,7 @@ void format_now(){
 void alternative_startup(){
   SPIFFS.end();
   setup_wifi();
+  Wait_for_WiFi();
   t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
   http_update_answer(ret);
 }

@@ -46,7 +46,6 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezek
 }
 
 void mqtt_reconnect() {
-  rtcData.channel=4;
   char buf_name[50];
   int i=0;
   int attempts = 3;
@@ -108,10 +107,8 @@ void mqttsend_s(const char *payload, char* device_id, char* topic){
 void setup_wifi() {
   println_out("Setting up wifi");
   WiFi.mode(WIFI_STA);
-  String ssid = WiFi.SSID();
-  String pass = WiFi.psk();
-  Serial.printf("SSID: %s\n", ssid.c_str());
-  Serial.printf("PSK: %s\n", pass.c_str());
+  Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
+  Serial.printf("PSK: %s\n", WiFi.psk().c_str());
   if( ESP.rtcUserMemoryRead( 0, (uint32_t*)&rtcData, sizeof( rtcData ) ) ) {
     // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
     uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
@@ -123,12 +120,17 @@ void setup_wifi() {
   if( rtcData.valid ) {
     // The RTC data was good, make a quick connection
     println_out("Connecting with know BSSID, channel etc..");
-    WiFi.begin( ssid.c_str(), pass.c_str(), rtcData.channel, rtcData.bssid, true );
+    WiFi.begin( WiFi.SSID().c_str(), WiFi.psk().c_str(), rtcData.channel, rtcData.bssid, true );
   }
   else {
     // The RTC data was not valid, so make a regular connection
-    WiFi.begin(ssid.c_str(), pass.c_str());
+    WiFi.begin(WiFi.SSID().c_str(), WiFi.psk().c_str());
   }
+}
+
+void Wait_for_WiFi() {
+  String ssid = WiFi.SSID();
+  String pass = WiFi.psk();
   int retries = 0;
   int wifiStatus = WiFi.status();
   while( wifiStatus != WL_CONNECTED ) {

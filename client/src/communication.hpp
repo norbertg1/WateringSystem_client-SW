@@ -18,6 +18,7 @@ String getSsidPass( String s );
 byte doFTP();
 byte eRcv();
 void efail();
+void Wait_for_WiFi();
 
 // The ESP8266 RTC memory is arranged into blocks of 4 bytes. The access methods read and write 4 bytes at a time,
 // so the RTC data structure should be padded to a 4-byte multiple.
