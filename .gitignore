@@ -46,6 +46,7 @@
 /server_on_ubuntu/wallpappers
 
 #directories
-PCB/altium/**/
+PCB/altium/*/**
+PCB/Sprint_Layout/**
 client_old/**
 
