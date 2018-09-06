@@ -28,7 +28,8 @@ struct RTCData{
   uint8_t bssid[6]; // 6 bytes, 11 in total
   time_t  epoch;    // 4 bytes  15 in total
   uint8_t valid;    // 1 byte,  16 in total
-  //uint8_t padding;  // 1 byte,  12 in total
+  uint8_t attempts; // 1 byte,  17 in total
+  uint8_t padding[3];  // 3 byte,  20 in total
 };
 
 extern struct RTCData rtcData;

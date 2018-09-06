@@ -41,6 +41,7 @@
 #define SDA                               2
 #define FLOWMETER_PIN                     5     //<---- eddig
 #define RXD_VCC_PIN                       3
+#define TXD_PIN                           1
 #define VOLTAGE_CALIB                     150
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
 #define FTP_SERVER                        "192.168.1.12"
@@ -49,7 +50,7 @@
 #define MINIMUM_UPDATE_VOLTAGE            3.1   //If valve is closed
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.1   //If valve is closed
 #define VALVE_CLOSE_VOLTAGE               3.05   //If valve is open
-#define MAX_LOG_FILE_SIZE                 204800
+#define MAX_LOG_FILE_SIZE                 409600
 #define SZELEP                            0
 #define FILE_SYSTEM                       1
 #define SERIAL_PORT                       1
@@ -75,7 +76,7 @@ void valve_test();
 void flow_meter_calculate_velocity();
 void get_TempPressure();
 void go_sleep(float microseconds);
-void read_voltage();
+float read_voltage();
 void read_moisture();
 void go_sleep_callback(WiFiManager *myWiFiManager);
 void mqttsend_d(double payload, String device_id, String topic,char precision);
@@ -93,6 +94,7 @@ void config_time();
 void flow_meter_interrupt();
 void RTC_save();
 void format_now();
+void valve_open_on_button();
 
 extern WiFiClientSecure espClient;
 extern PubSubClient client;
@@ -106,5 +108,6 @@ extern int mqtt_done;
 extern int sleep_time_seconds;
 extern int delay_time_seconds; 
 extern int remote_update, remote_log;
+extern String ID;
 
 #endif

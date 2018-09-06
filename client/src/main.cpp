@@ -57,13 +57,15 @@ int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
 String ver;
+String ID;
 int mqtt_done=0;
 
 void setup() {
+  //valve_open_on_button(); nehézkessé teszi a soros port használatát ezért van kikommentelve
   if( ESP.getResetReason() != "Power on" && ESP.getResetReason() != "Deep-Sleep Wake" && ESP.getResetReason() != "Software/System restart") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
   Serial.begin(115200);
   delay(50);
-  String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
+  ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
   ID.toCharArray(device_id, 25); 
   format();
   f = create_file();
@@ -121,8 +123,8 @@ void loop() {
     mqttsend_i(0, device_id, "/READY_FOR_DATA");
     print_out("Waiting for commands");
     client.loop();
-    for (int i = 0; i < 200; i++) {    //Ez mire van? torolni ha nem kell
-      delay(100);
+    for (int i = 0; i < 1000; i++) {
+      delay(10);
       client.loop();                  //Itt várok az adatra, talán szebben is lehetne
       if (mqtt_done == 5) break;
       print_out(".");
@@ -252,21 +254,20 @@ void go_sleep(float microseconds){
   if (remote_log)  send_log();
   espClient.stop();
   print_out("time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
-  Serial.print("time in awake state: "); Serial.print((float)millis()/1000); Serial.println(" s");
   if(microseconds - micros() > MINIMUM_DEEP_SLEEP_TIME){  //korrekcio a bekapcsolva levo idore 
     microseconds = microseconds - micros();
   }
  
   time_t now = time(nullptr);
-  if(now == 0 && rtcData.valid){
+  if(now == 0 && rtcData.valid && ESP.getResetReason() != "Power on"){
     rtcData.epoch += (time_t)millis()/1000; //Az RTCben tárolt epoch értékehz hozzáadom a bekapolcst állapotban levő időhosszt
     now = rtcData.epoch;  //Az RTCben tárolt érték lesz a jelenlegi időpont
   }
   else rtcData.epoch = now;
   rtcData.epoch += (time_t)microseconds/1000000; //Az RTCbet tárolt epoch értékét megnövelem az deepsleep állapotban levő időhosszal
-  println_out("");
   println_out(ctime(&now));
   RTC_save();
+  print_out("Previous unsuccessful wifi connection attempts: "); print_out((String)rtcData.attempts);
   print_out("Entering in deep sleep for: "); print_out(String((float)microseconds/1000000)); println_out(" s");
   close_file();
   delay(100);
@@ -291,7 +292,7 @@ void flow_meter_calculate_velocity(){
   print_out("Flowmeter velocity: "); print_out(String(flowmeter_velocity)); println_out(" L/min");
 }
 
-void read_voltage(){
+float read_voltage(){
 #if !SZELEP  
   digitalWrite(GPIO15, 0);        //FSA3157 digital switch
   digitalWrite(RXD_VCC_PIN, 1);
@@ -302,11 +303,13 @@ void read_voltage(){
   voltage = (voltage / 20)*4.7272*0.957;                                 //82039a-1640ef, 2018.aug.15
   print_out("Voltage:");  println_out(String(voltage));
   digitalWrite(RXD_VCC_PIN, 0);
+  return voltage;
 #else
   voltage = 0;
   for (int j = 0; j < 10; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
   voltage = (voltage / 10) - VOLTAGE_CALIB; //-0.2V
   print_out("Voltage:");  println_out(String(voltage));
+  return voltage;
 #endif
   }
 
@@ -410,7 +413,7 @@ void println_out(String str){
 void config_time(){
 #ifdef CONFIG_TIME
   configTime(2 * 3600, 3600, "pool.ntp.org", "time.nist.gov", "time.google.com");
-  print_out("Get current time request");
+  println_out("Get current time request");
 #endif
 }
 
@@ -436,8 +439,8 @@ void format(){
 
 void format_now(){
 #if FILE_SYSTEM
-  if(SPIFFS.format()) Serial.println("Spiffs formatted");
-  else Serial.println("Spiffs format failed");
+  if(SPIFFS.format()) Serial.println("SPIFFS formatted");
+  else Serial.println("SPIFFS format failed");
 #endif
 }
 
@@ -450,7 +453,32 @@ void alternative_startup(){
 }
 
 void RTC_save(){
-  print_out("\nSaving BSSID, channel and time to RTC memory\n");
+  print_out("Saving BSSID, channel and time to RTC memory\n");
   rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
   ESP.rtcUserMemoryWrite( 0, (uint32_t*)&rtcData, sizeof( rtcData ) );
 }
+
+void valve_open_on_button(){
+#if SZELEP
+  if(ESP.getChipId() != "795041" && ESP.getChipId() != "288f83"){
+    pinMode(TXD_PIN, INPUT);
+    if(!digitalRead(TXD_PIN) && read_voltage() > MINIMUM_VALVE_OPEN_VOLTAGE){
+      pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
+      pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
+      delay(100);
+      digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
+      digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
+      wifi_fpm_close();
+      WiFi.forceSleepBegin();
+      while(read_voltage() > MINIMUM_VALVE_OPEN_VOLTAGE){
+        delay(60000);
+      }
+      digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
+      digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
+      delay(MAX_VALVE_SWITCHING_TIME);
+      ESP.deepSleep(sleep_time_seconds);
+    }
+    pinMode(TXD_PIN, OUTPUT);
+  }
+#endif 
+} 

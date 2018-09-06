@@ -7,7 +7,7 @@ struct RTCData rtcData;
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezekre a csatornakra iratkozok fel
   char buff[70];
-  println_out("MQTT callback");   
+  print_out("\nMQTT callback: ");   
   println_out(topic);
   sprintf (buff, "%s%s", device_id, "/ON_OFF_COMMAND");
   if (!strcmp(topic, buff)) {
@@ -48,14 +48,14 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezek
 void mqtt_reconnect() {
   char buf_name[50];
   int i=0;
-  int attempts = 3;
-  if (valve_state()) attempts=20;
-  while(client.state() != 0 && i < attempts){
+  int attempts_max = 3;
+  print_out("Connceting to MQTT server");
+  if (valve_state()) attempts_max=20;
+  while(client.state() != 0 && i < attempts_max){
     if(!client.connected()) {
-      String clientId = "ESP8266Client-";
-      clientId += String(ESP.getChipId(), HEX);
-     
-      client.connect(clientId.c_str(),"titok" , "titok");       //Az Ubuntun futó mosquitoba a bejelentkezési adatok
+      //String clientId = "ESP8266Client-";
+      //clientId += String(ESP.getChipId(), HEX);
+      client.connect(ID.c_str(),"titok" , "titok");       //Az Ubuntun futó mosquitoba a bejelentkezési adatok
       sprintf (buf_name, "%s%s", device_id, "/ON_OFF_COMMAND");
       client.subscribe(buf_name);
       client.loop();
@@ -72,14 +72,15 @@ void mqtt_reconnect() {
       mqttsend_i(i, device_id, "/DEBUG");
       client.loop();
     }
-    if (i>1)  delay(1000);
     if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
       espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
       espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
     }
-    print_out("attempt = "); print_out(String(++i));
-    print_out(" The mqtt state is: "); println_out(String(client.state()));
+    print_out(".");
+    i++;
   }
+  print_out("\nattempts = "); print_out(String(i));
+  print_out(" The mqtt state is: "); println_out(String(client.state()));
 }
 
 void mqttsend_d(double payload, char* device_id, char* topic, char precision){
@@ -107,8 +108,8 @@ void mqttsend_s(const char *payload, char* device_id, char* topic){
 void setup_wifi() {
   println_out("Setting up wifi");
   WiFi.mode(WIFI_STA);
-  Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
-  Serial.printf("PSK: %s\n", WiFi.psk().c_str());
+  //Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
+  //Serial.printf("PSK: %s\n", WiFi.psk().c_str());
   if( ESP.rtcUserMemoryRead( 0, (uint32_t*)&rtcData, sizeof( rtcData ) ) ) {
     // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
     uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
@@ -125,6 +126,7 @@ void setup_wifi() {
   else {
     // The RTC data was not valid, so make a regular connection
     WiFi.begin(WiFi.SSID().c_str(), WiFi.psk().c_str());
+    rtcData.attempts = 0;
   }
 }
 
@@ -133,6 +135,7 @@ void Wait_for_WiFi() {
   String pass = WiFi.psk();
   int retries = 0;
   int wifiStatus = WiFi.status();
+  print_out("\nWaiting for wifi connection");
   while( wifiStatus != WL_CONNECTED ) {
     retries++;
     if( retries == 50 ) {
@@ -146,21 +149,42 @@ void Wait_for_WiFi() {
       delay( 10 );
       WiFi.begin(ssid.c_str(), pass.c_str());
     }
-    if( retries == 300 ) {
+    if( retries == 300 && ESP.getResetReason() == "Power on" ) {  //Ha kapcsolóval kapcsolom be, ilyenkor az RTC resetelődik szóval harminc másodperc után mehet wifimanager oldal.
       // Giving up after 30 seconds and going back to sleep
-      //WiFi.disconnect( true ); lehet ez végett felejti el a beállitasokat
       delay( 1 );
-      if( ESP.getResetReason() == "Power on") start_wifimanager();
+      start_wifimanager();
       if ( wifiStatus != WL_CONNECTED ){
         WiFi.mode( WIFI_OFF );
         go_sleep(SLEEP_TIME_NO_WIFI);
         return; // Not expecting this to be called, the previous call will never return.
       }
     }
+    if( retries == 300 && rtcData.attempts > 1 ) {                //Ha deepsleepből ébredt és ez a sokadik próbálkozás hogy nem talál wifi hálózatot.
+      // Giving up after 30 seconds and going back to sleep
+      delay( 1 );
+      if ( wifiStatus != WL_CONNECTED ){
+        rtcData.attempts++;
+        WiFi.mode( WIFI_OFF );
+        go_sleep(SLEEP_TIME_NO_WIFI);
+        return; // Not expecting this to be called, the previous call will never return.
+      }
+    }
+    if( retries == 900 && rtcData.attempts <= 1 ) {                //Ha deepsleepből ébredt és ez az első egynéhány próbálkozás a csatlakozásra.
+      // Giving up after 90 seconds and going back to sleep
+      delay( 1 );
+      if ( wifiStatus != WL_CONNECTED ){
+        rtcData.attempts++;
+        WiFi.mode( WIFI_OFF );
+        go_sleep(SLEEP_TIME_NO_WIFI);
+        return; // Not expecting this to be called, the previous call will never return.
+      }
+    }
+
     delay( 100 );
     wifiStatus = WiFi.status();
     Serial.print(".");
   }
+  rtcData.attempts = 0;
   rtcData.channel = WiFi.channel();
   memcpy( rtcData.bssid, WiFi.BSSID(), 6 ); // Copy 6 bytes of BSSID (AP's MAC address)
 }
