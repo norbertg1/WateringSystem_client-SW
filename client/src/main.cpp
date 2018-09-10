@@ -78,7 +78,7 @@ void setup() {
   setup_pins();
   read_voltage();
   read_moisture();
-  if (valve_state) valve_turn_off();  
+  if (valve_state()) valve_turn_off();  
   println_out("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
   espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
@@ -93,7 +93,7 @@ void setup() {
   println_out(String(WiFi.RSSI()));
   ver = VERSION;  ver += '.';  ver += SZELEP;
   print_out("version:"); println_out(ver);
-  if(voltage > MINIMUM_UPDATE_VOLTAGE) 
+  if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
     println_out("checking for update!");
     t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
@@ -136,7 +136,7 @@ void loop() {
   if (valve_state() != 1) {       //ha a szelep nincs nyitva
     if (client.connected()) {
       print_out("Valve state: "); println_out(String(valve_state()));
-      mqttsend_i(0, device_id, "/ON_OFF_STATE");
+      mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
       mqttsend_i(0, device_id, "/END");
       delay(100);
@@ -150,7 +150,7 @@ void loop() {
     mqtt_reconnect();
     if (client.connected()) {
       client.loop();
-      mqttsend_i(1, device_id, "/ON_OFF_STATE");
+      mqttsend_i(on_off_command, device_id, "/ON_OFF_STATE");
       mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
       mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
@@ -217,9 +217,9 @@ int valve_state() {
   int ret=0;
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))    {ret=1;}
   if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))    {ret=0;}
-  if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))     {ret=2;}
-  if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))   {ret=3;}
-  if(valve_timeout) { ret+=10;}
+  if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))     {ret=12;}
+  if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))   {ret=13;}
+  if(valve_timeout) {ret+=10;}
   return ret;  
   //return digitalRead(VALVE_SWITCH_TWO);
 #else
@@ -460,7 +460,7 @@ void RTC_save(){
 
 void valve_open_on_button(){
 #if SZELEP
-  if(ESP.getChipId() != "795041" && ESP.getChipId() != "288f83"){
+  if(ESP.getChipId() != 0x795041 && ESP.getChipId() != 0x288f83){
     pinMode(TXD_PIN, INPUT);
     if(!digitalRead(TXD_PIN) && read_voltage() > MINIMUM_VALVE_OPEN_VOLTAGE){
       pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);

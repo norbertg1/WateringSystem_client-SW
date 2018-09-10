@@ -20,7 +20,8 @@
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-#define VERSION                           "v1.49"
+//#define VERSION                           "v1.49"
+#define VERSION                           "v1.52"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -51,7 +52,7 @@
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.1   //If valve is closed
 #define VALVE_CLOSE_VOLTAGE               3.05   //If valve is open
 #define MAX_LOG_FILE_SIZE                 409600
-#define SZELEP                            0
+#define SZELEP                            1
 #define FILE_SYSTEM                       1
 #define SERIAL_PORT                       1
 #define CONFIG_TIME                       1

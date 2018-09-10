@@ -167,7 +167,7 @@ def read_command_from_database(device_id, data):
 def scheduled_irrigation_lenght(device_id, data_device, weather_code):
     print "READING COMMAND: scheduled_irrigation_lenght" 
     print datetime.datetime.now().strftime('%H:%M:%S')
-    column_scheduled_timedelta=scheduled_irrigation_table.select().where((scheduled_irrigation_table.c.DONE_FOR_TODAY == 0) & (scheduled_irrigation_table.c.DEVICE_ID == device_id) #
+    column_scheduled_timedelta=scheduled_irrigation_table.select().where((scheduled_irrigation_table.c.DEVICE_ID == device_id) #
         & (((datetime.datetime.now().strftime('%Y-%m-%d') == scheduled_irrigation_table.c.ON_DATE) & (scheduled_irrigation_table.c.END_DATE == None)) 
             | ((datetime.datetime.now().strftime('%Y-%m-%d') >= scheduled_irrigation_table.c.ON_DATE) & (scheduled_irrigation_table.c.END_DATE != None)))
         & ((datetime.datetime.now().strftime('%Y-%m-%d') <= scheduled_irrigation_table.c.END_DATE) | (scheduled_irrigation_table.c.END_DATE == None)) 
@@ -177,7 +177,9 @@ def scheduled_irrigation_lenght(device_id, data_device, weather_code):
     for row_scheduled in column_scheduled_timedelta.execute():    #ez összeszámolja azt, hogy ha sok kisebb öntözés lenne betervezve és ami időben egybe esik azt egyben öntözi ki
         scheduled_timedelta_total += row_scheduled['ON_TIME_LENGHT']*60 #mennyi időt legyen nyitva a szelep
     if scheduled_timedelta_total > 0:
-        total_irrigation_time = get_irrigation_time(device_id, data_device, 1)
+        total_irrigation_time = get_irrigation_time_volume(device_id, data_device, 1)
+        print "total_irrigation_time:", total_irrigation_time
+        print "scheduled_irrigation_total:", scheduled_timedelta_total
         if (total_irrigation_time-10) < scheduled_timedelta_total:
             if (int(weather_code/100) == 2 or int(weather_code/100) == 5):
                 print ("Eso vagy vihar van, ne legyen ontozes")
@@ -190,7 +192,7 @@ def scheduled_irrigation_lenght(device_id, data_device, weather_code):
 
 def scheduled_irrigation_liters(device_id, data_device, weather_code):
     print "READING COMMAND: scheduled_irrigation_liters" 
-    column_scheduled_timedelta=scheduled_irrigation_table.select().where((scheduled_irrigation_table.c.DONE_FOR_TODAY == 0) & (scheduled_irrigation_table.c.DEVICE_ID == device_id) #
+    column_scheduled_timedelta=scheduled_irrigation_table.select().where((scheduled_irrigation_table.c.DEVICE_ID == device_id)
         & (((datetime.datetime.now().strftime('%Y-%m-%d') == scheduled_irrigation_table.c.ON_DATE) & (scheduled_irrigation_table.c.END_DATE == None)) 
             | ((datetime.datetime.now().strftime('%Y-%m-%d') >= scheduled_irrigation_table.c.ON_DATE) & (scheduled_irrigation_table.c.END_DATE != None)))
         & ((datetime.datetime.now().strftime('%Y-%m-%d') <= scheduled_irrigation_table.c.END_DATE) | (scheduled_irrigation_table.c.END_DATE == None)) 
@@ -204,6 +206,7 @@ def scheduled_irrigation_liters(device_id, data_device, weather_code):
         total_irrigation_time, total_irrigation_volume = get_irrigation_time_volume(device_id, data_device, 2)
         print "total_irrigation_time:", total_irrigation_time
         print "total_irrigation_volume:", total_irrigation_volume
+        print "scheduled_liters_total:", scheduled_liters_total
         if total_irrigation_time > ABSOLUT_MAXIMUM_ON_TIME:
             set_done_for_today(column_scheduled_timedelta.execute(), device_id, 3)
         if total_irrigation_volume < scheduled_liters_total:
@@ -226,7 +229,7 @@ def scheduled_irrigation_one_time_lenght(device_id, data_device, weather_code):
     for row_scheduled in column_scheduled_timedelta.execute():    #ez összeszámolja azt, hogy ha sok kisebb öntözés lenne betervezve és ami időben egybe esik azt egyben öntözi ki
         scheduled_timedelta_total += row_scheduled['ON_TIME_LENGHT']*60 #mennyi időt legyen nyitva a szelep
     if scheduled_timedelta_total > 0:
-        total_irrigation_time = get_irrigation_time(device_id, data_device)
+        total_irrigation_time = get_irrigation_time_volume(device_id, data_device, 1)
         if (total_irrigation_time-10) < scheduled_timedelta_total:
             if (int(weather_code/100) == 2 or int(weather_code/100) == 5):
                 print ("Eso vagy vihar van, ne legyen ontozes")
@@ -248,7 +251,7 @@ def scheduled_irrigation_one_time_liters(device_id, data_device, weather_code):
         scheduled_liters_total += mm_to_liters(row_scheduled, device_id) #mennyi literig legyen nyitva a szelep
         print row_scheduled['ON_TIME']
     if scheduled_liters_total > 0:
-        total_irrigation_time, total_irrigation_volume = get_irrigation_time_volume(device_id, data_device)
+        total_irrigation_time, total_irrigation_volume = get_irrigation_time_volume(device_id, data_device, 2)
         if total_irrigation_time > ABSOLUT_MAXIMUM_ON_TIME:
             set_done_for_today_one_time(column_scheduled_timedelta.execute(), device_id, 3)
         if total_irrigation_volume < scheduled_liters_total:
@@ -291,7 +294,7 @@ def get_wheather_code(latitude,longitude):
     weather = owm.weather_at_coords(latitude, longitude).get_weather()
     return weather.get_weather_code()
 
-def get_irrigation_time(device_id, data_device):
+def get_irrigation_time_volume(device_id, data_device, on_off_state):
     column_data=data_table.select().where((data_table.c.DEVICE_ID == device_id) & (data_table.c.LAST_LOGIN > datetime.datetime.now() - datetime.timedelta(hours=delta_hours))).execute()
     data = {}; i=0; total_irrigation_volume=0; total_irrigation_time=0
     for row_data in column_data:
@@ -301,39 +304,21 @@ def get_irrigation_time(device_id, data_device):
         data[i]["AWAKE_TIME"] = row_data["AWAKE_TIME"]
         i+=1      
     for i in range(len(data)):
-        if i >= 1 and i < len(data)-1 and (data[i]["ON_OFF_STATE"] == 1 or data[i-1]["ON_OFF_STATE"] == 1) and data[i+1]["AWAKE_TIME"]<data[i]["AWAKE_TIME"]>data[i-1]["AWAKE_TIME"] and data[i]["AWAKE_TIME"] > 30:
+        if i >= 1 and i < len(data)-1 and (data[i]["ON_OFF_STATE"] == on_off_state or data[i-1]["ON_OFF_STATE"] == on_off_state) and data[i+1]["AWAKE_TIME"]<data[i]["AWAKE_TIME"]>data[i-1]["AWAKE_TIME"] and data[i]["AWAKE_TIME"] > 30:
             total_irrigation_time  += float(data[i]["AWAKE_TIME"])
-            print "lenght", data[i]["AWAKE_TIME"], total_irrigation_time
-        if i == len(data)-1 and data[i]["ON_OFF_STATE"] == 1:
+            #print "lenght", data[i]["AWAKE_TIME"], total_irrigation_time
+        if i == len(data)-1 and data[i]["ON_OFF_STATE"] == on_off_state:
             #total_irrigation_time  += float(data[i]["AWAKE_TIME"])
             print "ez most nincs lenght end", data[i]["AWAKE_TIME"], total_irrigation_time
     total_irrigation_time += float(data_device[device_id].AWAKE_TIME_X)
-    return total_irrigation_time
-
-def get_irrigation_time_volume(device_id, data_device, ON_OFF_STATE):
-    column_data=data_table.select().where((data_table.c.DEVICE_ID == device_id) & (data_table.c.LAST_LOGIN > datetime.datetime.now() - datetime.timedelta(hours=delta_hours))).execute()
-    data = {}; i=0; total_irrigation_volume=0; total_irrigation_time=0
-    for row_data in column_data:
-        data[i] = {}
-        data[i]["ON_OFF_STATE"] = row_data["ON_OFF_STATE"]
-        data[i]["WATER_VOLUME"] = row_data["WATER_VOLUME"]
-        data[i]["AWAKE_TIME"] = row_data["AWAKE_TIME"]
-        i+=1      
+    if on_off_state == 1: return total_irrigation_time
     for i in range(len(data)):
-        if i >= 1 and i < len(data)-1 and (data[i]["ON_OFF_STATE"] == 1 or data[i-1]["ON_OFF_STATE"] == 1) and data[i+1]["AWAKE_TIME"]<data[i]["AWAKE_TIME"]>data[i-1]["AWAKE_TIME"] and data[i]["AWAKE_TIME"] > 30:
-            total_irrigation_time  += float(data[i]["AWAKE_TIME"])
-            print "lenght", data[i]["AWAKE_TIME"], total_irrigation_time
-        if i == len(data)-1 and data[i]["ON_OFF_STATE"] == 1:
-            #total_irrigation_time  += float(data[i]["AWAKE_TIME"])
-            print "ez most nincs lenght end", data[i]["AWAKE_TIME"], total_irrigation_time
-    total_irrigation_time += float(data_device[device_id].AWAKE_TIME_X)
-    for i in range(len(data)):
-        if i >= 1 and i < len(data)-1 and (data[i]["ON_OFF_STATE"] == 1 or data[i-1]["ON_OFF_STATE"] == 1) and data[i+1]["WATER_VOLUME"]<data[i]["WATER_VOLUME"]>data[i-1]["WATER_VOLUME"] and data[i]["WATER_VOLUME"] > 0:
+        if i >= 1 and i < len(data)-1 and (data[i]["ON_OFF_STATE"] == on_off_state or data[i-1]["ON_OFF_STATE"] == on_off_state) and data[i+1]["WATER_VOLUME"]<data[i]["WATER_VOLUME"]>data[i-1]["WATER_VOLUME"] and data[i]["WATER_VOLUME"] > 0:
             total_irrigation_volume  += float(data[i]["WATER_VOLUME"])
-            print "volume", data[i]["WATER_VOLUME"], total_irrigation_volume
-        if i == len(data)-1 and data[i]["ON_OFF_STATE"] == 1:
+            #print "volume", data[i]["WATER_VOLUME"], total_irrigation_volume
+        if i == len(data)-1 and data[i]["ON_OFF_STATE"] == on_off_state:
             total_irrigation_volume  += float(data[i]["WATER_VOLUME"])
-            print "volume end", data[i]["WATER_VOLUME"], total_irrigation_volume
+            #print "volume end", data[i]["WATER_VOLUME"], total_irrigation_volume
     total_irrigation_volume  += float(data_device[device_id].WATER_VOLUME_X) 
     return total_irrigation_time, total_irrigation_volume
 
