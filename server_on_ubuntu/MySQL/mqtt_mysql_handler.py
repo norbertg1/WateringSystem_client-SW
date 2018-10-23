@@ -378,7 +378,7 @@ client.on_disconnect = on_disconnect
 client.connect("localhost",8883)
 client.loop_start()
 
-today = datetime.datetime.now().day         #egyszerűbb, de így nem működik pontosan az éjszakán átnyúló öntözés
+today = datetime.datetime.now().day
 loop = 0
 while 1:
 	print "************************************************************************************************\nserver is alive"
