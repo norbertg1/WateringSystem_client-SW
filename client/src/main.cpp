@@ -103,6 +103,7 @@ void setup() {
 
 void loop() {
   //valve_test();
+  on_off_command = 0; //teszt 2018.9.13
   mqtt_reconnect();
   if (client.connected()) {
     mqtt_done=0;

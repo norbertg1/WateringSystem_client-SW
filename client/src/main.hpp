@@ -20,8 +20,8 @@
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-//#define VERSION                           "v1.49"
-#define VERSION                           "v1.52"
+//#define VERSION                           "v1.53"
+#define VERSION                           "v1.53"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -43,7 +43,7 @@
 #define FLOWMETER_PIN                     5     //<---- eddig
 #define RXD_VCC_PIN                       3
 #define TXD_PIN                           1
-#define VOLTAGE_CALIB                     150
+#define VOLTAGE_CALIB                     100
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
 #define FTP_SERVER                        "192.168.1.12"
 #define FLOWMETER_CALIB_VOLUME            450.0 //Pulses per Liter: 450

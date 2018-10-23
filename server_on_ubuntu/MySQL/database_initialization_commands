@@ -18,7 +18,7 @@ CREATE TABLE devices (
 	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio. NINCS RÁ MEGÍRVA A KÓD
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
-	IRRIGATION_LENGHT			float,			#ilyen hosszan tartson az öntözés	
+	IRRIGATION_LENGTH			float,			#ilyen hosszan tartson az öntözés	
 	IRRIGATION_LITERS           float,			#és ilyen hosszan tartson az öntözés	
 	IRRIGATION_MM   			float,			#és ilyen hosszan tartson az öntözés	
 	MOISTURE_PERCENT			int,			#Az öntözés elindítása a talajnedvesség függvényében. A 0 azt jelenti hogy ki van kapcsolva a funkció.
@@ -27,11 +27,12 @@ CREATE TABLE devices (
     DELAY_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e még locsolni, ha az be van kapcsolva
 	SLEEP_TIME					int,			#Ennyi másodperces időközönként ébredjen fel ellenőrizni, hogy kell-e locsolni
 	REMOTE_UPDATE				int,			#Ha 0 ====> normális működés ha 1 ====> az eszköz IP címén bejön a web update interfész
+    REMOTE_LOG                  bool default 0, #táv loggolás FTPn keresztül
     LATID                       float,          #helyadat az openweathermap APInak
     LONGIT                      float,          #helyadat az openweathermap APInak
     DAILY_MAX                   float,          #openweathermap-ból lekérdezett érték
-    FORECAST_MM                 float,            #openweathermap-ból éjfélkor előrejelzett esőmennyiség 18 órán belül. Ha nagyobb mint 5 mm, nincs automatizált öntözés következő nap   
-    USER_EMAIL					varchar(127)	#Ez alapján lesznek azonosítva az egyes felhasználók
+    USER_EMAIL					varchar(127),	#Ez alapján lesznek azonosítva az egyes felhasználók
+    FORECAST_MM                 float           #openweathermap-ból éjfélkor előrejelzett esőmennyiség 18 órán belül. Ha nagyobb mint 5 mm, nincs automatizált öntözés következő nap   
 );
 
 /*A repeat rate megengedett értéke a 24 többszöröse (tehát 1 nap). 
@@ -40,7 +41,6 @@ CREATE TABLE devices (
 
 CREATE TABLE data (
 	DEVICE_ID			varchar(127),
-    DEVICE_NAME         varchar(127),
 	LAST_LOGIN			datetime,
 	TEMPERATURE			float,
 	HUMIDITY			smallint,
@@ -50,38 +50,42 @@ CREATE TABLE data (
 	WATER_VELOCITY      float,
     MM                  int,      
     VOLTAGE				float,
-    ON_OFF_STATE		bool,
+    ON_OFF_STATE		bool,					#Ha 1 ON_LENGTH álltal elindított öntözés, 2 - ON_MM vagy ON_LITERS álltal elindított öntözés
 	TEMPERATURE_POINTS	int,
 	RSSI				int,
-    RAIN_MM             float,
 	AWAKE_TIME			float,
     VERSION             varchar(10),
-    RST_REASON          varchar(25)
+    RST_REASON          varchar(25),
+    RAIN_MM             float
 );
 
 insert into users values('anna','valaki@valaki.com','titok');
 insert into devices values('anna','locsolo1','2017-08-31 15:16:55',0,0,0,'7:00:00',0,0,900,60,0);
 
 CREATE TABLE scheduled_irrigation (
+    IRRIGATION_ID 		int AUTO_INCREMENT PRIMARY,
 	DEVICE_ID			varchar(20),
-	ON_TIME				time,	
-	ON_TIME_LENGHT		int,                    #vagy időben
-	ON_TIME_LITERS      int,                    #vagy literben
-    ON_TIME_MM          int,                    #vagy mm-ben kell meghatarozni az öntözés hosszát
-    DONE_FOR_TODAY		bool
+	ON_DATE             date,                   #ez nem lehet NULL
+    END_DATE            date,                   #ha megvan adva egy dátum addig ismétlődik az öntözés, ahhoz hogy ne ismétlődjön ugyanannak kell lennie mint az ON_DATE
+    ON_TIME				time,                   #ez nem lehet NULL	
+	LENGTH				int,                    #vagy időben
+	LITERS      		int,                    #vagy literben
+    MM          		int,                    #vagy mm-ben kell meghatarozni az öntözés hosszát
+    DONE         		bool,					#a sikeres öntözések, számát mutatja
+    TODAY 				bool,					#a mai napi öntözés elvégzésének megpróbálását jelzi
+    COMMAND_ID          int default 0           #0 - user, 1 - temperature points, 2 - hottest days irrigation (ez itt lehet 21,22,23 - ahol, ez a három beállítható öntöése száma), 3 - moistur
 );
 
-CREATE TABLE scheduled_irrigation_one_time (
-    DEVICE_ID			varchar(20),
-	ON_TIME				time,	
-	ON_TIME_LENGHT		int,                    #vagy időben
-	ON_TIME_LITERS      int,                    #vagy literben
-    ON_TIME_MM          int,                    #vagy mm-ben kell meghatarozni az öntözés hosszát
-	DONE_FOR_TODAY		bool,
-    COMMAND_ID          int default 0              #0 - user, 1 - temperature points, 2 - hottest days irrigation, 3 - moisture
+CREATE TABLE scheduled_irrigation_result (		#Ha több napon átt tartó öntözés van a scheduled_irrigation táblába akkor ide írom be, hogyan sikerült öntözni napi lebontásban
+    IRRIGATION_ID       varchar(32),            #ezzel tudom párosítani a scheduled_irrigationnal	
+    REAL_DATETIME		datetime,           	#↓↓↓ amit a betervezettből sikerült megvalósítani ↓↓↓
+    REAL_LENGTH      	int,
+    REAL_LITERS      	int,
+    REAL_MM          	int,
+    RESULT              int                 	#1 - sikeres volt az öntözés, 2 - rossz idő szólt közbe, 3 - elérte a maximális időt ami öntözésre volt szánva; gyakorlatilag ez a régi vverzióban a DONE
 );
 
-CREATE TABLE hottest_days_irrigation (           #A legmelgebb napokon (30°C+) szükséges lehet lehet rövid (1perces) öntözésekkel lehűteni a gyepet akár többször is
+CREATE TABLE hottest_days_irrigation (           #A legmelgebb napokon (30°C+) szükséges lehet lehet rövid (2 perces) öntözésekkel lehűteni a gyepet akár többször is!
     DEVICE_ID                       varchar(20),
 	IRRIGATION_ONE_TEMPERATURE      float   default 35,
 	IRRIGATION_ONE_CHECK_TIME       time    not null default 0,
@@ -102,3 +106,14 @@ CREATE TABLE pairs (                            #Az érzékelők álltal mért a
 CREATE VIEW data_last_week AS SELECT * from data WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY);
 CREATE VIEW last_week as SELECT data.DEVICE_ID, devices.DEVICE_NAME, data.LAST_LOGIN, data.TEMPERATURE, data.HUMIDITY, data.MOISTURE, data.PRESSURE, data.WATER_VOLUME, data.WATER_VELOCITY, data.VOLTAGE, data.ON_OFF_STATE, data.TEMPERATURE_POINTS, data.RSSI, data.AWAKE_TIME, data.VERSION, data.RST_REASON from data  JOIN devices ON data.DEVICE_ID = devices.DEVICE_ID WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY);
 CREATE VIEW last_week_desc as SELECT data.DEVICE_ID, devices.DEVICE_NAME, data.LAST_LOGIN, data.TEMPERATURE, data.HUMIDITY, data.MOISTURE, data.PRESSURE, data.WATER_VOLUME, data.WATER_VELOCITY, data.VOLTAGE, data.ON_OFF_STATE, data.TEMPERATURE_POINTS, data.RSSI, data.AWAKE_TIME, data.VERSION, data.RST_REASON from data  JOIN devices ON data.DEVICE_ID = devices.DEVICE_ID WHERE LAST_LOGIN >= DATE_ADD(CURDATE(),INTERVAL -7 DAY) ORDER BY LAST_LOGIN desc;
+
+
+CREATE TABLE scheduled_irrigation_one_time (	#Ez már nem használt
+    DEVICE_ID			varchar(20),
+	ON_TIME				time,	
+	ON_TIME_LENGTH		int,                    #vagy időben
+	ON_TIME_LITERS      int,                    #vagy literben
+    ON_TIME_MM          int,                    #vagy mm-ben kell meghatarozni az öntözés hosszát
+	DONE_FOR_TODAY		bool,
+    COMMAND_ID          int default 0           #0 - user, 1 - temperature points, 2 - hottest days irrigation (ez itt lehet 21,22,23 - ahol, ez a három beállítható öntöése száma), 3 - moisture
+);
