@@ -19,6 +19,7 @@ byte doFTP();
 byte eRcv();
 void efail();
 void Wait_for_WiFi();
+void rtc_read();
 
 // The ESP8266 RTC memory is arranged into blocks of 4 bytes. The access methods read and write 4 bytes at a time,
 // so the RTC data structure should be padded to a 4-byte multiple.
@@ -29,7 +30,8 @@ struct RTCData{
   time_t  epoch;    // 4 bytes  15 in total
   uint8_t valid;    // 1 byte,  16 in total
   uint8_t attempts; // 1 byte,  17 in total
-  uint8_t padding[3];  // 3 byte,  20 in total
+  uint8_t winter_state; // 1 byte,  18 in total
+  uint8_t padding[2];  // 2 byte,  20 in total
 };
 
 extern struct RTCData rtcData;

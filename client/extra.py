@@ -15,7 +15,7 @@ def inplace_change(filename, old_string, new_string):
         s = s.replace(old_string, new_string)
         f.write(s)
 
-build_tag = "v1.53.1"
+build_tag = "v1.60.1"
 
 env.Replace(PROGNAME="%s" % build_tag)
 

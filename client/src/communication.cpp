@@ -12,6 +12,12 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezek
   sprintf (buff, "%s%s", device_id, "/ON_OFF_COMMAND");
   if (!strcmp(topic, buff)) {
     on_off_command = payload[0] - 48;
+    rtcData.winter_state = 0;
+    if (on_off_command == 2){
+      print_out("Winter State");
+      winter_state = 1;
+      rtcData.winter_state = 1;
+    } //Winter state, sajnos nem működik újraindulásnál hardveresen mindig becsukodik
     print_out("Valve command: ");  println_out(String(on_off_command));
     mqtt_done++;
   }
@@ -49,7 +55,7 @@ void mqtt_reconnect() {
   char buf_name[50];
   int i=0;
   int attempts_max = 3;
-  print_out("Connceting to MQTT server");
+  print_out("Connceting to MQTT server if not");
   if (valve_state()) attempts_max=20;
   while(client.state() != 0 && i < attempts_max){
     if(!client.connected()) {
@@ -110,14 +116,6 @@ void setup_wifi() {
   WiFi.mode(WIFI_STA);
   //Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
   //Serial.printf("PSK: %s\n", WiFi.psk().c_str());
-  if( ESP.rtcUserMemoryRead( 0, (uint32_t*)&rtcData, sizeof( rtcData ) ) ) {
-    // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
-    uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
-    rtcData.valid = false;
-    if( crc == rtcData.crc32 ) {
-      rtcData.valid = true;
-    }
-  }
   if( rtcData.valid ) {
     // The RTC data was good, make a quick connection
     println_out("Connecting with know BSSID, channel etc..");
@@ -127,6 +125,18 @@ void setup_wifi() {
     // The RTC data was not valid, so make a regular connection
     WiFi.begin(WiFi.SSID().c_str(), WiFi.psk().c_str());
     rtcData.attempts = 0;
+  }
+}
+
+void rtc_read(){
+  if( ESP.rtcUserMemoryRead( 0, (uint32_t*)&rtcData, sizeof( rtcData ) ) ) {
+    // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
+    uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
+    rtcData.valid = false;
+    if( crc == rtcData.crc32 ) {
+      println_out("RTC CRC TRUE");
+      rtcData.valid = true;
+    }
   }
 }
 
@@ -155,7 +165,7 @@ void Wait_for_WiFi() {
       start_wifimanager();
       if ( wifiStatus != WL_CONNECTED ){
         WiFi.mode( WIFI_OFF );
-        go_sleep(SLEEP_TIME_NO_WIFI);
+        go_sleep(SLEEP_TIME_NO_WIFI, 0);
         return; // Not expecting this to be called, the previous call will never return.
       }
     }
@@ -165,7 +175,7 @@ void Wait_for_WiFi() {
       if ( wifiStatus != WL_CONNECTED ){
         rtcData.attempts++;
         WiFi.mode( WIFI_OFF );
-        go_sleep(SLEEP_TIME_NO_WIFI);
+        go_sleep(SLEEP_TIME_NO_WIFI, 0);
         return; // Not expecting this to be called, the previous call will never return.
       }
     }
@@ -175,7 +185,7 @@ void Wait_for_WiFi() {
       if ( wifiStatus != WL_CONNECTED ){
         rtcData.attempts++;
         WiFi.mode( WIFI_OFF );
-        go_sleep(SLEEP_TIME_NO_WIFI);
+        go_sleep(SLEEP_TIME_NO_WIFI, 0);
         return; // Not expecting this to be called, the previous call will never return.
       }
     }

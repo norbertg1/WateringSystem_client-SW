@@ -20,8 +20,7 @@
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-//#define VERSION                           "v1.53"
-#define VERSION                           "v1.53"
+#define VERSION                           "v1.60"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -32,20 +31,20 @@
 #define WEB_UPDATE_TIMEOUT                WEB_UPDATE_TIMEOUT_SECONDS  * 1000      //time out for web update server
 #define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
 #define DHT_TYPE                          DHT22
-#define DHT_PIN                           0     //<---- innet kikommentezni oldhoz
-#define VALVE_H_BRIDGE_RIGHT_PIN          12
-#define VALVE_H_BRIDGE_LEFT_PIN           4
-#define VALVE_SWITCH_ONE                  14
-#define VALVE_SWITCH_TWO                  13
-#define GPIO15                            15      //ennek kene lennie a voltage boost EN pinnek és az FSA3157 switch pinnek is
-#define SCL                               5
-#define SDA                               2
-#define FLOWMETER_PIN                     5     //<---- eddig
+//#define DHT_PIN                           0     //<---- innet kikommentezni oldhoz
+//#define VALVE_H_BRIDGE_RIGHT_PIN          12
+//#define VALVE_H_BRIDGE_LEFT_PIN           4
+//#define VALVE_SWITCH_ONE                  14
+//#define VALVE_SWITCH_TWO                  13
+//#define GPIO15                            15      //ennek kene lennie a voltage boost EN pinnek és az FSA3157 switch pinnek is
+//#define SCL                               5
+//#define SDA                               2
+//#define FLOWMETER_PIN                     5     //<---- eddig
 #define RXD_VCC_PIN                       3
 #define TXD_PIN                           1
-#define VOLTAGE_CALIB                     100
+#define VOLTAGE_CALIB                     230
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
-#define FTP_SERVER                        "192.168.1.12"
+#define FTP_SERVER                        "192.168.1.101"
 #define FLOWMETER_CALIB_VOLUME            450.0 //Pulses per Liter: 450
 #define FLOWMETER_CALIB_VELOCITY          7.5   //Pulse frequency (Hz) / 7.5 = flow rate in L/min
 #define MINIMUM_UPDATE_VOLTAGE            3.1   //If valve is closed
@@ -57,7 +56,7 @@
 #define SERIAL_PORT                       1
 #define CONFIG_TIME                       1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
-/*
+
 //--------------------------------------------------------------------old---------------------------------------------------------------------------------------------------------------------------------------------------//
 #define VALVE_H_BRIDGE_RIGHT_PIN          12
 #define VALVE_H_BRIDGE_LEFT_PIN           15
@@ -68,7 +67,7 @@
 #define SCL                               3
 #define SDA                               14
 //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
-*/
+
 
 void valve_turn_on();
 void valve_turn_off();
@@ -76,7 +75,7 @@ int  valve_state();
 void valve_test();
 void flow_meter_calculate_velocity();
 void get_TempPressure();
-void go_sleep(float microseconds);
+void go_sleep(float microseconds, int winter_state);
 float read_voltage();
 void read_moisture();
 void go_sleep_callback(WiFiManager *myWiFiManager);
@@ -96,6 +95,7 @@ void flow_meter_interrupt();
 void RTC_save();
 void format_now();
 void valve_open_on_button();
+void winter_mode();
 
 extern WiFiClientSecure espClient;
 extern PubSubClient client;
@@ -110,5 +110,6 @@ extern int sleep_time_seconds;
 extern int delay_time_seconds; 
 extern int remote_update, remote_log;
 extern String ID;
+extern int winter_state;
 
 #endif

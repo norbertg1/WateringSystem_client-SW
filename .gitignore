@@ -49,4 +49,5 @@
 PCB/altium/*/**
 PCB/Sprint_Layout/**
 client_old/**
-
+other/pictures/**
+.vscode/**

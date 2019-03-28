@@ -49,7 +49,7 @@ uint32_t voltage;
 double T, P;
 float temp, temperature, moisture;
 int RSSI_value;
-int locsolo_state = LOW, on_off_command = LOW;
+int locsolo_state = LOW, on_off_command = LOW, winter_state = LOW;
 int sleep_time_seconds = 900;                  //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
 int remote_update = 0, remote_log=0;
@@ -69,8 +69,9 @@ void setup() {
   ID.toCharArray(device_id, 25); 
   format();
   f = create_file();
-  println_out("\n-----------------------ESP8266 alive----------------------------------------\n");
+  println_out("\n-----------------------ESP8266 alive-----------------------------------------\n");
   println_out(ESP.getResetReason());
+  rtc_read();
   setup_wifi();
   print_out("ID: ");   println_out(ID);
   print_out("MAC: ");   println_out(WiFi.macAddress());
@@ -78,7 +79,7 @@ void setup() {
   setup_pins();
   read_voltage();
   read_moisture();
-  if (valve_state()) valve_turn_off();  
+  if (valve_state()) valve_turn_off();
   println_out("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
   espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
@@ -131,11 +132,13 @@ void loop() {
       print_out(".");
     }
   }
-  if (remote_update && valve_state() == 0)  {web_update(remote_update); println_out("\nSetting up Webupdate");}
+  if (remote_update && (valve_state() == 0 || winter_state == 1))  {web_update(remote_update); println_out("\nSetting up Webupdate");}
+  if (winter_state == 1)  winter_mode(); 
   if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
   if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
   if (valve_state() != 1) {       //ha a szelep nincs nyitva
     if (client.connected()) {
+      mqtt_reconnect();
       print_out("Valve state: "); println_out(String(valve_state()));
       mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
@@ -143,15 +146,16 @@ void loop() {
       delay(100);
       client.disconnect();
     }
-    go_sleep(SLEEP_TIME);    
+    go_sleep(SLEEP_TIME, 0);    
   }
+
   else   {                        //ha a szelep nyitva van
     print_out("Valve state: "); println_out(String(valve_state()));
     flow_meter_calculate_velocity();
     mqtt_reconnect();
     if (client.connected()) {
       client.loop();
-      mqttsend_i(on_off_command, device_id, "/ON_OFF_STATE");
+      mqttsend_i(on_off_command, device_id, "/ON_OFF_STATE"); //ez elég fura, utánnajárni
       mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
       mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
@@ -170,6 +174,20 @@ void loop() {
     digitalWrite(GPIO15, HIGH);
     attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
   }
+}
+
+void winter_mode(){
+  valve_turn_on();
+  if (client.connected()) {
+    mqtt_reconnect();
+    print_out("Winter mode\n"); print_out("Valve state: "); println_out(String(valve_state()));
+    mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
+    mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+    mqttsend_i(0, device_id, "/END");
+    delay(100);
+    client.disconnect();
+    }
+    go_sleep(SLEEP_TIME, 1);
 }
 
 void valve_turn_on() {
@@ -217,6 +235,7 @@ int valve_state() {
 #if SZELEP
   int ret=0;
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))    {ret=1;}
+  if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE) && winter_state == 1)    {ret=2;}
   if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))    {ret=0;}
   if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))     {ret=12;}
   if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))   {ret=13;}
@@ -246,11 +265,11 @@ void setup_pins(){
 }
 
 void go_sleep_callback(WiFiManager *myWiFiManager){
-  go_sleep(SLEEP_TIME_NO_WIFI);
+  go_sleep(SLEEP_TIME_NO_WIFI, 0);
 }
 
-void go_sleep(float microseconds){
-  valve_turn_off();
+void go_sleep(float microseconds, int winter_state){
+  if (!winter_state) valve_turn_off();
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
   if (remote_log)  send_log();
   espClient.stop();
