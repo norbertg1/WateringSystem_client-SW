@@ -13,6 +13,7 @@ ssl.match_hostname = lambda cert, hostname: True
 from tendo import singleton
 import threading 
 import pyowm
+from threading import Timer
 
 print "MQTT_MySQL handler starting."
 if len(sys.argv) is 1: 
@@ -22,12 +23,11 @@ if len(sys.argv) is 1:
 #ellenben így lehet manuálisan elindítani ezt a kódot módosítás után mert megszünteti az előző futását
 #ha argumentummal inditom parancssorból akkor nem kell kikommentezni, kényelmesebb
 
-engine = create_engine("mysql+mysqldb://root:1234@localhost/watering_server?host=localhost?port=3306")
+engine = create_engine("mysql+mysqldb://webserver_agent:U.iEw+aLMN+NM.*@localhost/watering_server?host=localhost?port=3306")
 conn = engine.connect()
 metadata = MetaData(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
-
 users_table = Table('users', metadata, autoload=True);
 devices_table = Table('devices', metadata, autoload=True);
 data_table = Table('data', metadata, autoload=True);
@@ -38,15 +38,16 @@ hottest_days_irrigation_table = Table('hottest_days_irrigation', metadata, autol
 pairs_table = Table('pairs', metadata, autoload=True);
 forecast_mm_limit = 5
 delta_hours = 4
-ABSOLUT_MAXIMUM_ON_TIME = 60 * 60 #percekben
+ABSOLUT_MAXIMUM_ON_TIME = 60 * 60
 owm = pyowm.OWM('80c4722573ef8abe4b03228d9465fe09') #openweathermap
 MOISTURE_HOURS_WINDOW1 = 10; MOISTURE_HOURS_WINDOW2 = 18
 data = {}
+MINIMUM_VALVE_OPEN_VOLTAGE = 3.1
 
 class database_data:
 	data_table = Table('data', metadata, autoload=True);
 
-	def __init__( self, DEVICE_ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VERSION=0, RST_REASON=0, WATER_VOLUME=0, WATER_VOLUME_X=0, WATER_VELOCITY=0, MM=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0, AWAKE_TIME=0, AWAKE_TIME_X=0, RSSI=0,
+	def __init__( self, DEVICE_ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VERSION=0, RST_REASON=0, WATER_VOLUME=0, WATER_VOLUME_X=0, WATER_VELOCITY=0, MM=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0, AWAKE_TIME=0, AWAKE_TIME_X=0, RSSI=0, STOP_FLAG = 0,
 				  on_time=datetime.datetime.now(), off_time=datetime.datetime.now()):
 
 		self.DEVICE_ID = DEVICE_ID
@@ -68,6 +69,7 @@ class database_data:
 		self.AWAKE_TIME = AWAKE_TIME
 		self.AWAKE_TIME_X = AWAKE_TIME_X
 		self.RSSI = RSSI
+		self.STOP_FLAG = STOP_FLAG
 
 	def save_database_data(self):
 		trans = conn.begin()
@@ -80,6 +82,13 @@ class database_data:
 	def get_area(self):
 		column=devices_table.select(devices_table.c.DEVICE_ID == self.DEVICE_ID).execute().fetchone()
 		return column['AREA']
+	
+	def end(self):
+		print "Local time:" + time.strftime("%Y-%b-%d %H:%M:%S", time.localtime()) + "\n-----------------SLEEP------SLEEP------SLEEP------SLEEP------SLEEP------SLEEP------SLEEP--------------------------------\n\n"
+		data[self.DEVICE_ID].save_database_data()
+		del data[self.DEVICE_ID]; #ezt már nem tudom mi, helyetesitem
+		#if not data[self.DEVICE_ID].on_time < datetime.datetime.now() < data[self.DEVICE_ID].off_time:
+			#del data[self.DEVICE_ID]; #ezt már nem tudom mi	Törölni 2018.11.26
 
 def on_connect(client, userdata, rc, m):
 	client.subscribe("+/TEMPERATURE")
@@ -109,6 +118,7 @@ def handle_database(device_id, variable_type, value):
 	if (data.has_key(device_id) == 0) and session.query(exists().where(devices_table.c.DEVICE_ID==device_id)).scalar():
 		print "LOGGED IN DEVICE_ID:", device_id
 		data[device_id] = database_data()
+		Timer(120.0, data[device_id].end).start()
 		data[device_id].DEVICE_ID = device_id
 		print "get area:", data[device_id].get_area()
 	if(data.has_key(device_id)):
@@ -136,8 +146,9 @@ def handle_database(device_id, variable_type, value):
 		if(variable_type == 'END'):                     
 			print "Local time:" + time.strftime("%Y-%b-%d %H:%M:%S", time.localtime()) + "\n-----------------SLEEP------SLEEP------SLEEP------SLEEP------SLEEP------SLEEP------SLEEP--------------------------------\n\n"
 			data[device_id].save_database_data()
-			if not data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:
-				del data[device_id];
+			del data[device_id]; #ezt már nem tudom mi, helyetesitem
+			#if not data[device_id].on_time < datetime.datetime.now() < data[device_id].off_time:
+			#	del data[device_id]; #ezt már nem tudom mi	Törölni 2018.11.26
 
 def get_mm(device_id, value):
 	column=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
@@ -150,11 +161,12 @@ def send_message_to_device(device_id, data): #send on_off command
 	print "Read completed, now we send back the answer to the device and waiting for ON_OFF_STATE..."
 	client.publish(device_id + "/ON_OFF_COMMAND", on_off)
 	print 'Command for the device', device_id, ':', on_off
-	set_delay_sleep_times(device_id)
+	set_delay_sleep_times(data, device_id)
 
-def set_delay_sleep_times(device_id):
+def set_delay_sleep_times(data, device_id):
 	collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
-	client.publish(device_id + "/SLEEP_TIME", str(collumn['SLEEP_TIME']))
+	if (data[device_id].STOP_FLAG == 1):	client.publish(device_id + "/SLEEP_TIME", str(60))		#Ez azért van, hogy öntözés után 60 másodperc múlva ébredjen fel, és ellenőrizze, hogy nem-e  kell mégegy öntözést lefuttatni. Mert ha 3600 másdopercesek
+	else: client.publish(device_id + "/SLEEP_TIME", str(collumn['SLEEP_TIME']))						#a SLEEP timeok akkor elég hosszú késés kialakulhat.
 	client.publish(device_id + "/DELAY_TIME", str(collumn['DELAY_TIME']))
 	client.publish(device_id + "/REMOTE_UPDATE", str(collumn['REMOTE_UPDATE']))
 	client.publish(device_id + "/REMOTE_LOG", str(collumn['REMOTE_LOG']))
@@ -162,13 +174,13 @@ def set_delay_sleep_times(device_id):
 def read_command_from_database(device_id, data): 
 	collumn=devices_table.select(devices_table.c.DEVICE_ID == device_id).execute().fetchone()
 	weather_code=get_wheather_code(collumn['LATID'], collumn['LONGIT'])
-	if(collumn['ON_COMMAND']): return 1
+	if(collumn['ON_COMMAND']): return collumn['ON_COMMAND']
 	if(scheduled_irrigation(device_id, data, weather_code)): return 1
 	return 0
 
-def scheduled_irrigation(device_id, data_device, weather_code):
-	print "READING COMMAND: scheduled_irrigation_length, Local time: ", datetime.datetime.now().strftime('%H:%M:%S') 
-#↓↓↓↓↓ csak a feltételeknek megfelelő sorokat választom ki, innét lejebb ↓↓↓↓
+def scheduled_irrigation(device_id, data_device, weather_code):		#data_device-ot jó lenne a jövőben csak data-nak hívni azthiszem.
+	print "READING COMMAND: scheduled_irrigation, Local time: ", datetime.datetime.now().strftime('%H:%M:%S') 
+#↓↓↓↓↓ csak a feltételeknek MEGFELELŐ sorokat választom ki, innét lejebb ↓↓↓↓
 	scheduled_table=scheduled_irrigation_table.select().where((scheduled_irrigation_table.c.DEVICE_ID == device_id)  #Az ON_LENGTH feltétel azért kell, hogy a done_for_today funkcióba
 		& (scheduled_irrigation_table.c.TODAY == 0)
 		& (((datetime.datetime.now().strftime('%Y-%m-%d') == scheduled_irrigation_table.c.ON_DATE) & (scheduled_irrigation_table.c.END_DATE == None))       #ne írja be azokat az IRRIGATION_ID tervezett locsolásokat a scheduled_irrigation_result táblába ami nem való oda
@@ -179,6 +191,7 @@ def scheduled_irrigation(device_id, data_device, weather_code):
 	row_scheduled_result = scheduled_irrigation_result_table.select().where((scheduled_irrigation_result_table.c.DEVICE_ID == device_id)
 		& ((scheduled_irrigation_result_table.c.REAL_DATETIME) > (datetime.datetime.now() - datetime.timedelta(hours=delta_hours)))
 		& (scheduled_irrigation_result_table.c.RESULT == 0)).execute().fetchone()
+#	CSAK A FELTÉTELEKNEK MEGFELELŐ SOROKKAL DOLGOZOM TOVÁBB !!!
 #↓↓↓↓ Megnézem van-e folyamatban levő öntözés vagy delta_hours órán belül megszakadt öntözés ↓↓↓↓
 	if row_scheduled_result is None:	#Ha nincs a feltételeknek megfelelő sor a scheduled_irrigation_result táblában 
 		row_scheduled_irrigation_table = scheduled_table.execute().fetchone() 
@@ -187,50 +200,64 @@ def scheduled_irrigation(device_id, data_device, weather_code):
 			print " INSERT INTO scheduled_irrigation_result \n New scheduled irrigation starting..."
 			conn.execute("INSERT INTO scheduled_irrigation_result values(\'" + str(row_scheduled_irrigation_table["IRRIGATION_ID"]) + "\',\'" + str(device_id) + "\',\'"
 				 + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "\'," + "0" + "," + "0" + "," + "0" + "," + "0" + ")")
+			if (int(weather_code/100) == 2 or int(weather_code/100) == 5):	#IDŐJÁRÁS
+				print " Az öntözés eső vagy vihar végett meghiúsul! RESULT= 2"
+				conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 2 WHERE IRRIGATION_ID = \'" + str(row_scheduled_irrigation_table["IRRIGATION_ID"]) + "\';")
+				conn.execute("UPDATE scheduled_irrigation SET TODAY = 1 WHERE IRRIGATION_ID = \'" + str(row_scheduled_irrigation_table["IRRIGATION_ID"]) + "\';")
+				return 0
+			if data[device_id].VOLTAGE < MINIMUM_VALVE_OPEN_VOLTAGE: #2019.4.19 és tesztelem hogy meg-e van a minimum akksifeszültség, Öntözés közben ez a feltétel nem fut le csak az elején!
+				print " Az öntözés a szelep akkumulátor alacsony feszültsége végett meghiúsul! RESULT= 4"
+				conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 4 WHERE IRRIGATION_ID = \'" + str(row_scheduled_irrigation_table["IRRIGATION_ID"]) + "\';")
+				conn.execute("UPDATE scheduled_irrigation SET TODAY = 1 WHERE IRRIGATION_ID = \'" + str(row_scheduled_irrigation_table["IRRIGATION_ID"]) + "\';")
+				return 0
 			return 1
 	else:	#Ha  van a feltételeknek megfelelő sor a scheduled_irrigation_result táblában akkor frissítem abban az értékeket (locsolási idő, vízmennyiség, stb..)
 		for row_scheduled_irrigation_table in scheduled_table.execute():
 			if row_scheduled_irrigation_table['IRRIGATION_ID'] == row_scheduled_result['IRRIGATION_ID']:
 				SCHEDULED_LENGTH = row_scheduled_irrigation_table['LENGTH']
-				SCHEDULED_LITERS = get_liters(device_id, row_scheduled_irrigation_table['LITERS'], row_scheduled_irrigation_table['MM'])
+				SCHEDULED_LITERS = get_liters(device_id, row_scheduled_irrigation_table['LITERS'], row_scheduled_irrigation_table['MM'])	#mm to liter konverziót végez
 				IRRIGATION_ID = str(row_scheduled_irrigation_table["IRRIGATION_ID"])
 		#↓↓↓↓ Innét frissítti az adatbázisban az eltelt öntözési időhosszt és a vízmennyiséget ↓↓↓↓
 				if row_scheduled_result["REAL_LENGTH"] < float(data_device[device_id].AWAKE_TIME_X):	#Ha az öntözés nem szakad meg, vagyis nem kapcsol ki a kliens közben (pl. szar wifi végett)
 					CURRENT_LENGTH = float(data_device[device_id].AWAKE_TIME_X)
-					CURRENT_LITERS = get_liters(device_id, float(data_device[device_id].WATER_VOLUME_X), float(data[device_id].MM))
+					CURRENT_LITERS = get_liters(device_id, float(data_device[device_id].WATER_VOLUME_X), float(data[device_id].MM))		#mm to liter konverziót végez
 					print " Irrigation_result_table UPDATE"
 					conn.execute("UPDATE scheduled_irrigation_result SET REAL_LENGTH = " + str(CURRENT_LENGTH) + ", REAL_LITERS = " 
 						+ str(data[device_id].WATER_VOLUME_X) + ", REAL_MM = " + str(float(data[device_id].MM)) 
-						+ " WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+						+ " WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
 				else:	#Ha az öntözés megszakad (pl. szar wifi végett)
 					CURRENT_LENGTH = row_scheduled_result["REAL_LENGTH"] + float(data_device[device_id].AWAKE_TIME_X)
-					CURRENT_LITERS = get_liters(device_id, row_scheduled_result["REAL_LITERS"] + float(data_device[device_id].WATER_VOLUME_X), row_scheduled_result["REAL_MM"] + float(data[device_id].MM))
+					CURRENT_LITERS = get_liters(device_id, row_scheduled_result["REAL_LITERS"] + float(data_device[device_id].WATER_VOLUME_X), row_scheduled_result["REAL_MM"] + float(data[device_id].MM))		#mm to liter konverziót végez
 					print " Az öntözés megszakadt idő: ", CURRENT_LENGTH, "\bs liter:", CURRENT_LITERS, "\n Irrigation_result_table UPDATE"
 					conn.execute("UPDATE scheduled_irrigation_result SET REAL_LENGTH = " + str(CURRENT_LENGTH) + ", REAL_LITERS = " 
 						+ str(CURRENT_LITERS) + ", REAL_MM = " + str(row_scheduled_result["REAL_MM"] + float(data[device_id].MM)) + " WHERE IRRIGATION_ID = \'" 
-						+ IRRIGATION_ID + "\';")
-		#↓↓↓↓ Innét értékelődik ki, hogy meddig kell még öntözni ↓↓↓↓					
-				if ABSOLUT_MAXIMUM_ON_TIME < SCHEDULED_LENGTH:	#MAXIMUM
+						+ IRRIGATION_ID + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
+		#↓↓↓↓ Innét értékelődik ki, hogy meddig kell még öntözni ↓↓↓↓
+				if	CURRENT_LENGTH > ABSOLUT_MAXIMUM_ON_TIME:	#MAXIMUM
 					print " Az öntözés kikapcsol, mert elérte a MAXIMALIS öntözési időt: ",CURRENT_LENGTH, "\bs liter: ", CURRENT_LITERS, "\bL", "\n RESULT= 3"
-					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 3 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 3 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
 					conn.execute("UPDATE scheduled_irrigation SET TODAY = 1 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					data_device[device_id].STOP_FLAG = 1
 					return 0					
-				if (int(weather_code/100) == 2 or int(weather_code/100) == 5):	#IDŐJÁRÁS
+				if (int(weather_code/100) == 2 or int(weather_code/100) == 5):	#IDŐJÁRÁS De ez ide talán nem is kell, mert az öntözés elején már tesztelem ezt. Talán ha gyorsan változik az időjárás??
 					print " Az öntözés kikapcsol mert eso vagy vihar van, eddigi öntözési idő: ", CURRENT_LENGTH, "\bs liter: ", CURRENT_LITERS, "\bL", "\n RESULT= 2"
-					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 2 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 2 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
 					conn.execute("UPDATE scheduled_irrigation SET TODAY = 1 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					data_device[device_id].STOP_FLAG = 1
 					return 0
 				if SCHEDULED_LENGTH < CURRENT_LENGTH and SCHEDULED_LENGTH > 0:	#IDŐHOSSZ SZERINTI ÖNTÖZÉS
 					DONE = row_scheduled_irrigation_table['DONE'] + 1
 					print " Az öntözés kikapcsol, mert elérte a tervezett öntözési időt: ",CURRENT_LENGTH, "\bs liter: ", CURRENT_LITERS, "\bL", " DONE= ", DONE, " RESULT= 1"
-					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 1 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 1 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
 					conn.execute("UPDATE scheduled_irrigation SET TODAY = 1, DONE = " + str(DONE) + " WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					data_device[device_id].STOP_FLAG = 1
 					return 0
 				if SCHEDULED_LITERS < CURRENT_LITERS and SCHEDULED_LITERS > 0:	#VÍZMENNYISÉG SZERINTI ÖNTÖZÉS
 					DONE = row_scheduled_irrigation_table['DONE'] + 1
 					print " Az öntözés kikapcsol, mert elérte a tervezett öntözési mennyiséget: ",CURRENT_LENGTH, "\bs liter: ", CURRENT_LITERS, "\bL", " DONE= ", DONE, " RESULT= 1"
-					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 1 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 1 WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
 					conn.execute("UPDATE scheduled_irrigation SET TODAY = 1, DONE = " + str(DONE) + " WHERE IRRIGATION_ID = \'" + IRRIGATION_ID + "\';")
+					data_device[device_id].STOP_FLAG = 1
 					return 0
 		#↓↓↓↓ Ha bekapcsolo parancs van	↓↓↓↓			
 				if SCHEDULED_LENGTH > CURRENT_LENGTH: #Azért nem csak row_scheduled_result["ON_REAL_LENGTH"], mert itt még nem frissül az adatbázis és a régi értéket tartalmazza
@@ -290,9 +317,9 @@ def temperature_points():
 					if (row["IRRIGATION_LENGTH"] != 0): conn.execute("insert into scheduled_irrigation values(0,\'" + row["DEVICE_ID"] + "\',\'" + datetime.datetime.now().strftime('%Y-%m-%d') + "\'," 
 						+ "default" + ",\'" + str(row["IRRIGATION_TIME"]) + "\'," + str(row["IRRIGATION_LENGTH"]) + ",0,0,0,0,1)")           
 					if (row["IRRIGATION_MM"] != 0):     conn.execute("insert into scheduled_irrigation values(0,\'" + row["DEVICE_ID"] + "\',\'" + datetime.datetime.now().strftime('%Y-%m-%d') + "\'," 
-						+ "NULL" + ",\'" + str(row["IRRIGATION_TIME"]) + "\',0," + str(row["IRRIGATION_MM"]) + ",0,0,0,1)")           
+						+ "NULL" + ",\'" + str(row["IRRIGATION_TIME"]) + "\',0,0," + str(row["IRRIGATION_MM"]) + ",0,0,1)")           
 					if (row["IRRIGATION_LITERS"] != 0): conn.execute("insert into scheduled_irrigation values(0,\'" + row["DEVICE_ID"] + "\',\'" + datetime.datetime.now().strftime('%Y-%m-%d') + "\'," 
-						+ "NULL" + ",\'" + str(row["IRRIGATION_TIME"]) + "\',0,0," + str(row["IRRIGATION_LITERS"]) + ",0,0,1)")           
+						+ "NULL" + ",\'" + str(row["IRRIGATION_TIME"]) + "\',0," + str(row["IRRIGATION_LITERS"]) + ",0,0,0,1)")           
 			else: conn.execute("UPDATE devices SET TEMPERATURE_POINTS = " + str(temperature_points) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")        
 		else:   conn.execute("UPDATE devices SET TEMPERATURE_POINTS = 0 where DEVICE_ID = \'" + row["DEVICE_ID"] + "\'")
 	conn.execute("UPDATE devices SET DAILY_MAX = 0")
@@ -356,12 +383,13 @@ def at_loop():
 	collumn_devices=devices_table.select().execute()
 	for row in collumn_devices:
 		collumn_data=data_table.select(data_table.c.DEVICE_ID == row["DEVICE_ID"]).execute().fetchone()
-		conn.execute("update data set RAIN_MM = " +  str(get_past3h_mm(row['LATID'], row['LONGIT'])) + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\' order by LAST_LOGIN desc limit 1;")
+		rain = str(get_past3h_mm(row['LATID'], row['LONGIT']))
+		print "DEVICE_ID", row["DEVICE_ID"], "Rain:", rain, "\bmm"
+		conn.execute("update data set RAIN_MM = " +  rain + " where DEVICE_ID = \'" + row["DEVICE_ID"] + "\' order by LAST_LOGIN desc limit 1;")
 
 def midnight_tasks():
 	print "Midnight Tasks"
-	#conn.execute("UPDATE scheduled_irrigation SET DONE = 0")
-	conn.execute("DELETE FROM scheduled_irrigation_one_time")
+	conn.execute("UPDATE scheduled_irrigation SET TODAY = 0 WHERE END_DATE >= \'" + datetime.datetime.now().strftime('%Y-%m-%d') + "\'")
 	temperature_points()
 	irrigation_on_moisture()
 
@@ -382,6 +410,8 @@ today = datetime.datetime.now().day
 loop = 0
 while 1:
 	print "************************************************************************************************\nserver is alive"
+	IRRIGATION_ID = 11
+	conn.execute("UPDATE scheduled_irrigation_result SET RESULT = 3 WHERE IRRIGATION_ID = \'" + str(IRRIGATION_ID) + "\' and DATE(REAL_DATETIME) = \'" + (datetime.datetime.now().strftime('%Y-%m-%d')) + "\';")
 	if loop == 3:
 		at_loop()
 		loop = 0

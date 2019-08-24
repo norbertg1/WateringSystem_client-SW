@@ -31,7 +31,8 @@ struct RTCData{
   uint8_t valid;    // 1 byte,  16 in total
   uint8_t attempts; // 1 byte,  17 in total
   uint8_t winter_state; // 1 byte,  18 in total
-  uint8_t padding[2];  // 2 byte,  20 in total
+  uint8_t open_on_switch; // 1 byte,  19 in total ez arra kell, hogy a kapcsolóval is bel lehessen kapcsolni a locsolót
+  uint8_t padding[1];  // 1 byte,  20 in total
 };
 
 extern struct RTCData rtcData;

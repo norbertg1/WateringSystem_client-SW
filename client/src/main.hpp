@@ -16,11 +16,11 @@
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
-#define MAX_VALVE_SWITCHING_TIME_SECONDS  30                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
+#define MAX_VALVE_SWITCHING_TIME_SECONDS  20                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-#define VERSION                           "v1.60"
+#define VERSION                           "v1.63"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -96,6 +96,7 @@ void RTC_save();
 void format_now();
 void valve_open_on_button();
 void winter_mode();
+void valve_open_on_switch();
 
 extern WiFiClientSecure espClient;
 extern PubSubClient client;

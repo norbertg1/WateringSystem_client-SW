@@ -9,6 +9,10 @@
    v2.4.1 verzióban Tools --> lwIP Variant --> v1.4 Compile from source opció (többit nem teszteltem, kivéve: defaulnál (v2 Lower Memory) nem működik) szükséges a TLS MQTT titkosított kapcsolat működéséhez
 
    Wifihez csatlakozás: Bekapcsolni a kapcsolóval, beírni a csatalkozási adatokat, majd ki be kapcsolni ismét a kapcsolóval.
+
+   TODO:
+   2019.3.31 //EEPROMba vagy SPIFFbe tarolni, hogy epp winter state van-e? utanna ellenorizni!!!
+   
 */
 #include "main.hpp"
 #include "communication.hpp"
@@ -72,6 +76,7 @@ void setup() {
   println_out("\n-----------------------ESP8266 alive-----------------------------------------\n");
   println_out(ESP.getResetReason());
   rtc_read();
+  //valve_open_on_switch();
   setup_wifi();
   print_out("ID: ");   println_out(ID);
   print_out("MAC: ");   println_out(WiFi.macAddress());
@@ -79,6 +84,7 @@ void setup() {
   setup_pins();
   read_voltage();
   read_moisture();
+  //if (valve_state() && !winter_state) valve_turn_off();    //EEPROMba vagy SPIFFbe tarolni, hogy epp winter state van-e? utanna ellenorizni!!!
   if (valve_state()) valve_turn_off();
   println_out("Setting up certificates");
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
@@ -94,6 +100,8 @@ void setup() {
   println_out(String(WiFi.RSSI()));
   ver = VERSION;  ver += '.';  ver += SZELEP;
   print_out("version:"); println_out(ver);
+  rtcData.open_on_switch = 0;                 //ez a két sor arra kell ha a kapcsolóval akaruk aktiválni az öntözést
+  RTC_save();
   if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
     println_out("checking for update!");
@@ -136,7 +144,7 @@ void loop() {
   if (winter_state == 1)  winter_mode(); 
   if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
   if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
-  if (valve_state() != 1) {       //ha a szelep nincs nyitva
+  if (valve_state() != 1 || valve_state() != 14) {       //ha a szelep nincs nyitva
     if (client.connected()) {
       mqtt_reconnect();
       print_out("Valve state: "); println_out(String(valve_state()));
@@ -234,13 +242,15 @@ void valve_turn_off() {
 int valve_state() {
 #if SZELEP
   int ret=0;
-  if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))    {ret=1;}
+  if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))                         {ret=1;}  //Ha nyitva van
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE) && winter_state == 1)    {ret=2;}
-  if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))    {ret=0;}
-  if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))     {ret=12;}
-  if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))   {ret=13;}
+  if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))                         {ret=0;}
+  if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))                          {ret=12;}
+  if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))                        {ret=13;}
+  if (((float)voltage / 1000) <= VALVE_CLOSE_VOLTAGE) ret = 5;
+  if (((float)voltage / 1000) <= MINIMUM_VALVE_OPEN_VOLTAGE) ret += 4;
   if(valve_timeout) {ret+=10;}
-  return ret;  
+  return ret;  //Nyitott állapot lehet ret = 1 vagy ret = 14
   //return digitalRead(VALVE_SWITCH_TWO);
 #else
   return 0;
@@ -473,7 +483,7 @@ void alternative_startup(){
 }
 
 void RTC_save(){
-  print_out("Saving BSSID, channel and time to RTC memory\n");
+  print_out("Saving RTC memory\n");
   rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
   ESP.rtcUserMemoryWrite( 0, (uint32_t*)&rtcData, sizeof( rtcData ) );
 }
@@ -501,4 +511,30 @@ void valve_open_on_button(){
     pinMode(TXD_PIN, OUTPUT);
   }
 #endif 
-} 
+}
+
+void valve_open_on_switch(){
+#if SZELEP
+  print_out("valve_open_on_switch: "); Serial.print(rtcData.open_on_switch);
+  if ((rtcData.open_on_switch == 1 && rtcData.valid == 1) && ((float)read_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){
+    print_out("valve openning on switch!!!");  pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
+    pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
+    delay(100);
+    digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
+    digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
+    wifi_fpm_close();
+    WiFi.forceSleepBegin();
+    while(((float)read_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){ //Letesztelni hogy ez mukodik e!! Alacsony feszultsegnel be kell csukodnia!
+      delay(60000);
+    }
+    digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
+    digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
+    delay(MAX_VALVE_SWITCHING_TIME);
+    rtcData.open_on_switch = 0;
+    RTC_save();
+    ESP.deepSleep(sleep_time_seconds);
+  }
+  rtcData.open_on_switch = 1;
+  RTC_save();
+#endif 
+}

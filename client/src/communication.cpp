@@ -137,6 +137,7 @@ void rtc_read(){
       println_out("RTC CRC TRUE");
       rtcData.valid = true;
     }
+    else println_out("RTC CRC FALSE");
   }
 }
 

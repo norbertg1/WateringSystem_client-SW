@@ -43,9 +43,10 @@ if(
 
 $db = array(				//CASE SENSITIVE!!!!!!!!!!!!!!!!!
 //-------------------------------------------------------------szelep
-    "5C:CF:7F:79:50:41" => "v1.18.1",			//locsolo2
+    "5C:CF:7F:28:8F:83" => "v1.63old.1",		//locsolo1 ez a régi
+    "5C:CF:7F:79:50:41" => "v1.60.1",			//locsolo2
 //-------------------------------------------------------------szenzor
-    "18:FE:AA:AA:AA:BB" => "TEMP-1.0.0"
+    "84:F3:EB:82:03:9A" => "v1.51.0"            //szenzor1
 );
 
 if(!isset($db[$_SERVER['HTTP_X_ESP8266_STA_MAC']])) {
@@ -71,7 +72,7 @@ fwrite($fp, "   ");
 fwrite($fp, "/var/www/html/esp/update/bin/".$db[$_SERVER['HTTP_X_ESP8266_STA_MAC']].".bin");
 //fclose($fp);
 
-if(/*!check_header('HTTP_X_ESP8266_SDK_VERSION') &&*/ ($db[$_SERVER['HTTP_X_ESP8266_STA_MAC']] != $_SERVER['HTTP_X_ESP8266_VERSION']) && ($_SERVER["HTTP_X_ESP8266_SKETCH_MD5"] != md5_file($localBinary))){
+if(/*!check_header('HTTP_X_ESP8266_SDK_VERSION') &&*/ array_key_exists($_SERVER['HTTP_X_ESP8266_STA_MAC'], $db) && ($db[$_SERVER['HTTP_X_ESP8266_STA_MAC']] != $_SERVER['HTTP_X_ESP8266_VERSION']) && ($_SERVER["HTTP_X_ESP8266_SKETCH_MD5"] != md5_file($localBinary))){
 //    || $_SERVER["HTTP_X_ESP8266_SKETCH_MD5"] != md5_file($localBinary)) {
     fwrite($fp, "   UPDATE STARTED\n");
     fclose($fp);

@@ -15,7 +15,7 @@ CREATE TABLE devices (
 	DEVICE_NAME					varchar(127),	#Ezt a felhasználó szabadon választhatja
 	DEVICE_ID					varchar(127),	#Ezt amikor a hardver AP üzemmódban van, akkor lehet kiolvasni belőle. Csak olyan hardver engedélyezett ami szerepel ebben a táblában
 	LAST_ON_TIME				datetime,		#Az utolsó öntözés időpontja
-	ON_COMMAND					bool,			#Ha 1 elindul az öntözés
+	ON_COMMAND					bool,			#Ha 1 - elindul az öntözés, 2 - winter state nem mukodik mert ujraindulasnal mindig becsukodik aminek hardveres okai vannak
 	REPEAT_RATE					int,			#Az öntözés ismétlődése órákban. A 0 azt jelenti, hogy ki van kapcsolva a funkcio. NINCS RÁ MEGÍRVA A KÓD
 	IRRIGATION_TIME				time,			#Az öntözés időpontja
 	IRRIGATION_LENGTH			float,			#ilyen hosszan tartson az öntözés	
@@ -82,7 +82,7 @@ CREATE TABLE scheduled_irrigation_result (		#Ha több napon átt tartó öntöz�
     REAL_LENGTH      	int,
     REAL_LITERS      	int,
     REAL_MM          	int,
-    RESULT              int                 	#1 - sikeres volt az öntözés, 2 - rossz idő szólt közbe, 3 - elérte a maximális időt ami öntözésre volt szánva; gyakorlatilag ez a régi vverzióban a DONE
+    RESULT              int                 	#1 - sikeres volt az öntözés, 2 - rossz idő szólt közbe, 3 - elérte a maximális időt ami öntözésre volt szánva; kell egy 4 - alacsony akkufeszt jelöligyakorlatilag ez a régi vverzióban a DONE
 );
 
 CREATE TABLE hottest_days_irrigation (           #A legmelgebb napokon (30°C+) szükséges lehet lehet rövid (2 perces) öntözésekkel lehűteni a gyepet akár többször is!
