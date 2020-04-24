@@ -1,0 +1,3 @@
+@reboot /home/odroid/Desktop/server/MySQL/mqtt_mysql_handler.sh
+*/15 * * * * /home/odroid/Desktop/server/MySQL/mqtt_mysql_handler.sh
+

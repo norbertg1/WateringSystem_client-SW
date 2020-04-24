@@ -1,5 +1,13 @@
+# Folders
+other/**
+server_on_ubuntu/server/webpage/www/html/esp/update/log/**
+server_on_ubuntu/server/webpage/www/html/esp/update/bin/**
+server_on_ubuntu/server/old_mysql_database_2020.3.29/**
+
+
 # keys, certificates
 *.crt
+*.csr
 *.key
 
 # Object files
@@ -33,18 +41,6 @@
 *.hex
 *.bin
 
-#layout files
-*.gbr
-
-# Debug files
-*.dSYM/
-
-#Altium
-*.Dat
-*.htm
-*.REP
-*.TLT
-/PCB/altium/*.pdf
 
 #Folders
 /server_on_ubuntu/wallpappers
@@ -56,4 +52,40 @@ client_old/**
 other/pictures/**
 .vscode/**
 
+# Various Altium files
+*.PrjPCBStructure
+*.SchDocPreview
+*.PcbDocPreview
+__Previews
+*.PrjPcbStructure
+*.Dat
+*.REP 
+*.TLT
+*.LOG
+*.log
+*.htm
+*.$$$
+
+#useless dirs
+Project\
+Project\ Logs
+Project Outputs for*
+Project\ Outputs
+
+#History
+History
+
+#Exports, but not manual ones
+exports/*
+!exports/manual
+
+#Python stuff
+scripts/__pycache__/
+*.bak
+*.dwl
+*.dwl2
+
+# LTSpice
+*.raw
+*.log
 

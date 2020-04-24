@@ -1,3 +1,0 @@
-1. Download: ubuntu-18.04-4.17-minimal-odroid-x2-u2-u3-20180730.img.xz például, azthiszem az XU3, XU4 image nem jó
-2. Rufusszal SD kártyára tenni
-3. bootolni
