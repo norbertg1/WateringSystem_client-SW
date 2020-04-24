@@ -1,3 +1,7 @@
+# keys, certificates
+*.crt
+*.key
+
 # Object files
 *.o
 *.ko
@@ -42,12 +46,14 @@
 *.TLT
 /PCB/altium/*.pdf
 
-#wallpapers
+#Folders
 /server_on_ubuntu/wallpappers
-
-#directories
+server_on_ubuntu/server/old_mysql_database_2020.3.29/**
+other/pictures/**
 PCB/altium/*/**
 PCB/Sprint_Layout/**
 client_old/**
 other/pictures/**
 .vscode/**
+
+
