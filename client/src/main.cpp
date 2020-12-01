@@ -144,24 +144,13 @@ void loop() {
   if (winter_state == 1)  winter_mode(); 
   if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
   if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
-  if (valve_state() != 1 || valve_state() != 14) {       //ha a szelep nincs nyitva
-    if (client.connected()) {
-      mqtt_reconnect();
-      print_out("Valve state: "); println_out(String(valve_state()));
-      mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
-      mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
-      mqttsend_i(0, device_id, "/END");
-      delay(100);
-      client.disconnect();
-    }
-    go_sleep(SLEEP_TIME, 0);    
-  }
-
-  else   {                        //ha a szelep nyitva van
+  delay(100);
+  if ((valve_state() == 1) || (valve_state() == 14)) {       //ha a szelep nyitva van
     print_out("Valve state: "); println_out(String(valve_state()));
     flow_meter_calculate_velocity();
     mqtt_reconnect();
     if (client.connected()) {
+      print_out("szelept nyitva");
       client.loop();
       mqttsend_i(on_off_command, device_id, "/ON_OFF_STATE"); //ez elég fura, utánnajárni
       mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
@@ -172,6 +161,20 @@ void loop() {
       delay(100);
       client.disconnect();
     }
+  }
+  else{                                                   //ha a szelep nincs nyitva
+    if (client.connected()) {
+      print_out("\nszelept nincs nyitva\n");
+      mqtt_reconnect();
+      mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
+      mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+      mqttsend_i(0, device_id, "/END");
+      delay(100);
+      client.disconnect();
+    }
+    go_sleep(SLEEP_TIME, 0);    
+  }
+
     print_out("Time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
     println_out("Delay");
     delay(DELAY_TIME);
@@ -181,7 +184,6 @@ void loop() {
     get_TempPressure();         //Nyitott szelepnél minden újracsatlakozásnál mérek hőmérsékletet és légnyomást
     digitalWrite(GPIO15, HIGH);
     attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
-  }
 }
 
 void winter_mode(){
@@ -242,6 +244,9 @@ void valve_turn_off() {
 int valve_state() {
 #if SZELEP
   int ret=0;
+  println_out("\nVALVE_SWITCH_ONE:"); println_out(String(digitalRead(VALVE_SWITCH_ONE)));
+  println_out("VALVE_SWITCH_TWO:"); println_out(String(digitalRead(VALVE_SWITCH_TWO)));
+
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))                         {ret=1;}  //Ha nyitva van
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE) && winter_state == 1)    {ret=2;}
   if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))                         {ret=0;}
@@ -250,6 +255,10 @@ int valve_state() {
   if (((float)voltage / 1000) <= VALVE_CLOSE_VOLTAGE) ret = 5;
   if (((float)voltage / 1000) <= MINIMUM_VALVE_OPEN_VOLTAGE) ret += 4;
   if(valve_timeout) {ret+=10;}
+  print_out("voltage: "); print_out(String(voltage));
+  print_out(" valve_timeout flag: "); print_out(String(valve_timeout));
+  print_out(" Valve state: "); print_out(String(ret));
+  print_out("\n");
   return ret;  //Nyitott állapot lehet ret = 1 vagy ret = 14
   //return digitalRead(VALVE_SWITCH_TWO);
 #else
@@ -279,7 +288,10 @@ void go_sleep_callback(WiFiManager *myWiFiManager){
 }
 
 void go_sleep(float microseconds, int winter_state){
-  if (!winter_state) valve_turn_off();
+  if (!winter_state) {
+    print_out("winter_state\n ");
+    valve_turn_off();
+  }
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
   if (remote_log)  send_log();
   espClient.stop();

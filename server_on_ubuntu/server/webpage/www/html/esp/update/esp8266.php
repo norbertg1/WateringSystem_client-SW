@@ -1,5 +1,15 @@
 <?PHP
 
+//FONTOS!!!!
+//HA logolni akarok:
+//sudo ps aux | grep httpd parancsal a terminal altal kiirt elso oszlop a fontos
+//Hozzak letre egy fajlt /home/odroid/Desktop/log.log es az elobb megallapitot tulajdonos kapjon hozza irasi jogot
+//Egyszerubb ha ezt a fajt barki tudja szerkeszteni
+
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 header('Content-type: text/plain; charset=utf8', true);
 
 function check_header($name, $value = false) {
@@ -21,9 +31,15 @@ function sendFile($path) {
     readfile($path);
 }
 
+$fp = fopen('/home/odroid/logs/ESP8266Updater.log', 'a');
+$date = date("y/m/d - H:i:s ");
+fwrite($fp, $date);
+
 if(!check_header('HTTP_USER_AGENT', 'ESP8266-http-Update')) {
     header($_SERVER["SERVER_PROTOCOL"].' 403 Forbidden', true, 403);
     echo "only for ESP8266 updater!\n";
+	fwrite($fp, "  only for ESP8266 updater!\n");
+	fclose($fp);
     exit();
 }
 
@@ -38,13 +54,15 @@ if(
 ) {
     header($_SERVER["SERVER_PROTOCOL"].' 403 Forbidden', true, 403);
     echo "only for ESP8266 updater! (header)\n";
+	fwrite($fp, "  only for ESP8266 updater!\n");
+	fclose($fp);
     exit();
 }
 
 $db = array(				//CASE SENSITIVE!!!!!!!!!!!!!!!!!
 //-------------------------------------------------------------szelep
-    "5C:CF:7F:28:8F:83" => "v1.63old.1",		//locsolo1 ez a régi
-    "5C:CF:7F:79:50:41" => "v1.60.1",			//locsolo2
+    "5C:CF:7F:28:8F:83" => "v1.64old.1",		//locsolo1 ez a régi
+    "5C:CF:7F:79:50:41" => "v1.64.1",			//locsolo2
 //-------------------------------------------------------------szenzor
     "84:F3:EB:82:03:9A" => "v1.51.0"            //szenzor1
 );
@@ -59,9 +77,8 @@ $localBinary = "/var/www/html/esp/update/bin/".$db[$_SERVER['HTTP_X_ESP8266_STA_
 // Check if version has been set and does not match, if not, check if
 // MD5 hash between local binary and ESP8266 binary do not match if not.
 // then no update has been found.
-$fp = fopen('log.log', 'a');
-$date = date("y/m/d : H:i:s :");
-fwrite($fp, $date);
+
+
 fwrite($fp, "  ");
 fwrite($fp, $_SERVER['HTTP_X_ESP8266_STA_MAC']);
 fwrite($fp, " HW version: ");
@@ -70,7 +87,7 @@ fwrite($fp, " desired version: ");
 fwrite($fp, $db[$_SERVER['HTTP_X_ESP8266_STA_MAC']]);
 fwrite($fp, "   ");
 fwrite($fp, "/var/www/html/esp/update/bin/".$db[$_SERVER['HTTP_X_ESP8266_STA_MAC']].".bin");
-//fclose($fp);
+
 
 if(/*!check_header('HTTP_X_ESP8266_SDK_VERSION') &&*/ array_key_exists($_SERVER['HTTP_X_ESP8266_STA_MAC'], $db) && ($db[$_SERVER['HTTP_X_ESP8266_STA_MAC']] != $_SERVER['HTTP_X_ESP8266_VERSION']) && ($_SERVER["HTTP_X_ESP8266_SKETCH_MD5"] != md5_file($localBinary))){
 //    || $_SERVER["HTTP_X_ESP8266_SKETCH_MD5"] != md5_file($localBinary)) {
