@@ -14,6 +14,7 @@ from tendo import singleton
 import threading 
 import pyowm
 from threading import Timer
+import subprocess
 
 print "MQTT_MySQL handler starting."
 if len(sys.argv) is 1: 
@@ -23,7 +24,7 @@ if len(sys.argv) is 1:
 #ellenben így lehet manuálisan elindítani ezt a kódot módosítás után mert megszünteti az előző futását
 #ha argumentummal inditom parancssorból akkor nem kell kikommentezni, kényelmesebb
 
-engine = create_engine("mysql+mysqldb://python_agent:U.iEw+aLMN+NM.*@localhost/watering_server?host=localhost?port=3306")
+engine = create_engine("mysql+mysqldb://python_agent:U.iEw+aLMN+NM.*@localhost/watering_server?host=localhost?port=3306", pool_recycle=3600, pool_pre_ping=True)
 conn = engine.connect()
 metadata = MetaData(engine)
 Session = sessionmaker(bind=engine)
@@ -40,6 +41,7 @@ forecast_mm_limit = 5
 delta_hours = 4
 ABSOLUT_MAXIMUM_ON_TIME = 60 * 60 #default 60*60 = 1 hour
 owm = pyowm.OWM('80c4722573ef8abe4b03228d9465fe09') #openweathermap
+
 MOISTURE_HOURS_WINDOW1 = 10; MOISTURE_HOURS_WINDOW2 = 18
 data = {}
 MINIMUM_VALVE_OPEN_VOLTAGE = 3.1
@@ -49,7 +51,7 @@ class database_data:
 
 	def __init__( self, DEVICE_ID=0, TEMPERATURE=0, HUMIDITY=0, MOISTURE=0, PRESSURE=0, VERSION=0, RST_REASON=0, WATER_VOLUME=0, WATER_VOLUME_X=0, WATER_VELOCITY=0, MM=0, VOLTAGE=0, ON_OFF_STATE=0, TEMPERATURE_POINTS=0, AWAKE_TIME=0, AWAKE_TIME_X=0, RSSI=0, STOP_FLAG = 0,
 				  on_time=datetime.datetime.now(), off_time=datetime.datetime.now()):
-
+S
 		self.DEVICE_ID = DEVICE_ID
 		self.TEMPERATURE = TEMPERATURE
 		self.HUMIDITY = HUMIDITY
@@ -421,3 +423,9 @@ while 1:
 	print "loop completed:", loop, "\n************************************************************************************************\n"
 	loop +=1    
 	time.sleep(600)
+	if datetime.datetime.now().weekday() is 6 and datetime.datetime.now().hour is 0 and datetime.datetime.now().minute<10:
+		print "============================================================================================================================="
+		print "========================================== END OF THE WEEK==================================================================="
+		print "============================================================================================================================="
+		subprocess.Popen(["sh", "mqtt_mysql_handler.sh"] + sys.argv[1:])
+		break
