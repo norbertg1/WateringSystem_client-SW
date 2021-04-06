@@ -33,6 +33,7 @@
 #include <time.h>
 
 #include <WiFiClientSecure.h>
+
 #include <rom/rtc.h>
 extern "C" int rom_phy_get_vdd33();
 #include "SPIFFS.h"
@@ -43,8 +44,6 @@ PubSubClient client(espClient);
 File f;
 
 //const char* host = "192.168.1.100";
-const char* mosquitto_user = "titok";
-const char* mosquitto_pass = "titok";
 char device_id[16];
 int mqtt_port= 8883;
 
@@ -65,43 +64,40 @@ int mqtt_done=0;
 
 void setup() {
   Serial.begin(115200);
-  if( reset_reason(0) != "POWERON_RESET" && reset_reason(0) != "SW_RESET" && reset_reason(0) != "DEEPSLEEP_RESET") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
-  
-  delay(50);
-  String ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);  //String function doesnt know uint64_t
-  ID.toCharArray(device_id, 16); 
-  format();
-  f = create_file();
   println_out("\n-----------------------ESP8266 alive-----------------------------------------\n");
   println_out("Reset reason for CPU0:");
   println_out(reset_reason(0));
-  print_out("Reset reason for CPU1:");
+  println_out("Reset reason for CPU1:");
   println_out(reset_reason(1));
+  //if( reset_reason(0) != "POWERON_RESET" && reset_reason(0) != "SW_RESET" && reset_reason(0) != "DEEPSLEEP_RESET") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
+  String ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);  //String function doesnt know uint64_t
+  ID.toCharArray(device_id, 16);
+  get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
+  format();
+  f = create_file();
   RTC_validateCRC();
-  //valve_open_on_switch();
   setup_wifi();
   print_out("ID: ");   println_out(ID);
   print_out("MAC: ");   println_out(WiFi.macAddress());
-  get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   setup_pins();
   read_voltage();
   read_moisture();
   //if (valve_state() && !winter_state) valve_turn_off();    //EEPROMba vagy SPIFFbe tarolni, hogy epp winter state van-e? utanna ellenorizni!!!
   if (valve_state()) valve_turn_off();
-  println_out("Setting up certificates");
-  espClient.setCertificate(certificates_bin_crt);
-  espClient.setPrivateKey(certificates_bin_key);
-  println_out("Setting up mqtt callback, wifi");
-  client.setServer(MQTT_SERVER, mqtt_port);
-  client.setCallback(mqtt_callback);
-  config_time();
   Wait_for_WiFi();
   print_out("IP address:  ");
-  println_out(String(WiFi.localIP()));
+  println_out(String(WiFi.localIP().toString()));
   print_out("RSSI: ");
   println_out(String(WiFi.RSSI()));
+  config_time();
+  println_out("Setting up mqtt certificates and callback");
+  espClient.setCACert(CA_cert);
+  espClient.setPrivateKey(ESP_RSA_key);
+  espClient.setCertificate(ESP_CA_cert);
+  client.setServer(MQTT_SERVER, mqtt_port);
+  client.setCallback(mqtt_callback);
   ver = VERSION;  ver += '.';  ver += SZELEP;
-  print_out("version:"); println_out(ver);
+  print_out("Version: "); println_out(ver);
   rtcData.open_on_switch = 0;                 //ez a két sor arra kell ha a kapcsolóval akaruk aktiválni az öntözést
   if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
@@ -221,7 +217,7 @@ void valve_turn_on() {
 void valve_turn_off() {
 #if SZELEP
   bool closing_flag=0;
-  println_out("Valve_turn_off");
+  println_out("Closing Valve");
   uint16_t cnt = 0;
   digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
   digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
@@ -245,8 +241,8 @@ void valve_turn_off() {
 int valve_state() {
 #if SZELEP
   int ret=0;
-  println_out("\nVALVE_SWITCH_ONE:"); println_out(String(digitalRead(VALVE_SWITCH_ONE)));
-  println_out("VALVE_SWITCH_TWO:"); println_out(String(digitalRead(VALVE_SWITCH_TWO)));
+  print_out("VALVE_SWITCH_ONE:"); println_out(String(digitalRead(VALVE_SWITCH_ONE)));
+  print_out("VALVE_SWITCH_TWO:"); println_out(String(digitalRead(VALVE_SWITCH_TWO)));
 
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))                         {ret=1;}  //Ha nyitva van
   if(digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE) && winter_state == 1)    {ret=2;}
@@ -256,10 +252,9 @@ int valve_state() {
   if (((float)voltage / 1000) <= VALVE_CLOSE_VOLTAGE) ret = 5;
   if (((float)voltage / 1000) <= MINIMUM_VALVE_OPEN_VOLTAGE) ret += 4;
   if(valve_timeout) {ret+=10;}
-  print_out("voltage: "); print_out(String(voltage));
-  print_out(" valve_timeout flag: "); print_out(String(valve_timeout));
-  print_out(" Valve state: "); print_out(String(ret));
-  print_out("\n");
+  print_out("Voltage: "); print_out(String(voltage));
+  print_out(", valve_timeout flag: "); print_out(String(valve_timeout));
+  print_out(", Valve state: "); println_out(String(ret));
   return ret;  //Nyitott állapot lehet ret = 1 vagy ret = 14
   //return digitalRead(VALVE_SWITCH_TWO);
 #else
@@ -290,7 +285,7 @@ void go_sleep_callback(/*WiFiManager *myWiFiManager*/void *){
 
 void go_sleep(float microseconds, int winter_state){
   if (!winter_state) {
-    print_out("winter_state\n ");
+    println_out("Winter_state.");
     valve_turn_off();
   }
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
@@ -396,10 +391,10 @@ void http_update_answer(t_httpUpdate_return ret){
       println_out("[update] Update failed.");
       break;
     case HTTP_UPDATE_NO_UPDATES:
-      println_out("[update] Update no Update.");
+      println_out("[update] No Update.");
       break;
     case HTTP_UPDATE_OK:
-      println_out("[update] Update ok."); // may not called we reboot the ESP
+      println_out("[update] Updated!"); // may not called we reboot the ESP
       break;    
   }
 }
@@ -489,6 +484,7 @@ void format_now(){
 }
 
 void alternative_startup(){
+  Serial.println("Alternative startup");
   SPIFFS.end();
   setup_wifi();
   Wait_for_WiFi();
