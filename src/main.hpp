@@ -7,18 +7,19 @@
 
    3V alatt ne nyisson ki a szelep, de ha nyitva van akkor legyen egy deltaU feszĂĽltsĂ©g ami alatt csukodk be (pl 2.9V)
 */
+#define ESP32
 #include <Arduino.h>
 #include "FS.h"
-#include <WiFiManager.h> 
 #include <PubSubClient.h>
-#include <ESP8266httpUpdate.h>
+//#include <ESP8266httpUpdate.h>
+#include "HTTPUpdate.h"
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  20                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
-#define SLEEP_TIME_NO_WIFI_SECONDS        3600                            //When cannot connect to wifi network, sleep time between two attempts
+#define SLEEP_TIME_NO_WIFI_SECONDS        30//3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
 #define VERSION                           "v1.68"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
@@ -52,7 +53,7 @@
 #define VALVE_CLOSE_VOLTAGE               3.05   //If valve is open
 #define MAX_LOG_FILE_SIZE                 409600
 #define SZELEP                            1
-#define FILE_SYSTEM                       1
+#define FILE_SYSTEM                       0
 #define SERIAL_PORT                       1
 #define CONFIG_TIME                       1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -78,7 +79,7 @@ void get_TempPressure();
 void go_sleep(float microseconds, int winter_state);
 float read_voltage();
 void read_moisture();
-void go_sleep_callback(WiFiManager *myWiFiManager);
+void go_sleep_callback(/*WiFiManager *myWiFiManager*/void *);
 void mqttsend_d(double payload, String device_id, String topic,char precision);
 void http_update_answer(t_httpUpdate_return ret);
 void mqttsend_i(int payload, char* device_id, char* topic);
@@ -97,12 +98,14 @@ void format_now();
 void valve_open_on_button();
 void winter_mode();
 void valve_open_on_switch();
+int get_reset_reason(int icore);
+String reset_reason(int icore);
 
 extern WiFiClientSecure espClient;
 extern PubSubClient client;
-extern ESP8266WebServer server;
+//extern ESP8266WebServer server;
 
-extern char device_id[25];
+extern char device_id[16];
 extern const char* mosquitto_user;
 extern const char* mosquitto_pass;
 extern int on_off_command;

@@ -3,7 +3,7 @@
 #include "certificates.h"
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
-struct RTCData rtcData;
+RTC_DATA_ATTR struct RTCData rtcData;
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezekre a csatornakra iratkozok fel
   char buff[70];
@@ -79,8 +79,8 @@ void mqtt_reconnect() {
       client.loop();
     }
     if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
-      espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
-      espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+      espClient.setCertificate(certificates_bin_crt);
+      espClient.setPrivateKey(certificates_bin_key);
     }
     print_out(".");
     i++;
@@ -114,36 +114,19 @@ void mqttsend_s(const char *payload, char* device_id, char* topic){
 void setup_wifi() {
   println_out("Setting up wifi");
   WiFi.mode(WIFI_STA);
-  //Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
-  //Serial.printf("PSK: %s\n", WiFi.psk().c_str());
   if( rtcData.valid ) {
     // The RTC data was good, make a quick connection
-    println_out("Connecting with know BSSID, channel etc..");
-    WiFi.begin( WiFi.SSID().c_str(), WiFi.psk().c_str(), rtcData.channel, rtcData.bssid, true );
+    println_out("RTC memory valid, connecting with know BSSID, channel etc..");
+    WiFi.begin( rtcData.ssid, rtcData.psk, rtcData.channel, rtcData.bssid, true );
   }
   else {
     // The RTC data was not valid, so make a regular connection
-    WiFi.begin(WiFi.SSID().c_str(), WiFi.psk().c_str());
+    WiFi.begin();
     rtcData.attempts = 0;
   }
 }
 
-void rtc_read(){
-  if( ESP.rtcUserMemoryRead( 0, (uint32_t*)&rtcData, sizeof( rtcData ) ) ) {
-    // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
-    uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
-    rtcData.valid = false;
-    if( crc == rtcData.crc32 ) {
-      println_out("RTC CRC TRUE");
-      rtcData.valid = true;
-    }
-    else println_out("RTC CRC FALSE");
-  }
-}
-
 void Wait_for_WiFi() {
-  String ssid = WiFi.SSID();
-  String pass = WiFi.psk();
   int retries = 0;
   int wifiStatus = WiFi.status();
   print_out("\nWaiting for wifi connection");
@@ -153,18 +136,13 @@ void Wait_for_WiFi() {
       // Quick connect is not working, reset WiFi and try regular connection
       print_out("\n5s gone, nothing happend. Resetting wifi settings\n");
       WiFi.disconnect();
-      delay( 10 );
-      WiFi.forceSleepBegin();
-      delay( 10 );
-      WiFi.forceSleepWake();
-      delay( 10 );
-      WiFi.begin(ssid.c_str(), pass.c_str());
+      WiFi.begin(rtcData.ssid, rtcData.psk);
     }
-    if( retries == 300 && ESP.getResetReason() == "Power on" ) {  //Ha kapcsolóval kapcsolom be, ilyenkor az RTC resetelődik szóval harminc másodperc után mehet wifimanager oldal.
+    if( retries == 300 && reset_reason(0) == "POWERON_RESET" ) {  //Ha kapcsolóval kapcsolom be, ilyenkor az RTC resetelődik szóval harminc másodperc után mehet wifimanager oldal.
       // Giving up after 30 seconds and going back to sleep
       delay( 1 );
       start_wifimanager();
-      if ( wifiStatus != WL_CONNECTED ){
+      if ( WiFi.status() != WL_CONNECTED ){
         WiFi.mode( WIFI_OFF );
         go_sleep(SLEEP_TIME_NO_WIFI, 0);
         return; // Not expecting this to be called, the previous call will never return.
@@ -195,29 +173,40 @@ void Wait_for_WiFi() {
     wifiStatus = WiFi.status();
     Serial.print(".");
   }
-  rtcData.attempts = 0;
-  rtcData.channel = WiFi.channel();
-  memcpy( rtcData.bssid, WiFi.BSSID(), 6 ); // Copy 6 bytes of BSSID (AP's MAC address)
+    rtcData.attempts = 0;
+    rtcData.channel = WiFi.channel();
+    memcpy( rtcData.bssid, WiFi.BSSID(), 6 ); // Copy 6 bytes of BSSID (AP's MAC address)
+    memcpy(rtcData.ssid, WiFi.SSID().c_str(), sizeof(WiFi.SSID().c_str()));
+    memcpy(rtcData.psk, WiFi.psk().c_str(), sizeof(WiFi.psk()));
 }
 
 void start_wifimanager() {
   print_out("Turn on reason is \"Power on\" starting wifimanager config portal");
-  char device_id_wm[25];
+  AsyncWebServer server(80);
+  DNSServer dns;
+  char device_id_wm[16];
 #if SZELEP
   String AP_name = "szelepvezerlo ";
 #else
   String AP_name = "szenzor ";
 #endif
-  AP_name += String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
-  String ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
-  ID.toCharArray(device_id_wm, 25);
-  WiFiManager wifiManager;
-  WiFiManagerParameter print_device_ID(device_id, device_id, device_id_wm, 25);
+  String ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);
+  ID.toCharArray(device_id_wm, 16);
+  AsyncWiFiManager wifiManager(&server,&dns);
+  AsyncWiFiManagerParameter print_device_ID(device_id, device_id, device_id_wm, 25);
   wifiManager.addParameter(&print_device_ID);
   wifiManager.setConfigPortalTimeout(WIFI_CONFIGURATION_PAGE_TIMEOUT);
   wifiManager.startConfigPortal(AP_name.c_str());
+  delay(1000);
+  if ( WiFi.status() == WL_CONNECTED ){
+    rtcData.attempts = 0;
+    rtcData.channel = WiFi.channel();
+    memcpy( rtcData.bssid, WiFi.BSSID(), 6 ); // Copy 6 bytes of BSSID (AP's MAC address)
+    memcpy(rtcData.ssid, WiFi.SSID().c_str(), sizeof(WiFi.SSID().c_str()));
+    memcpy(rtcData.psk, WiFi.psk().c_str(), sizeof(WiFi.psk()));
+  }
 }
-
+/*
 void web_update_setup() {
   //MDNS.begin(host);
   server.on("/", HTTP_GET, []() {
@@ -282,7 +271,7 @@ void send_log(){
   doFTP();
 #endif
 }
-
+*/
 
 //FTP stuff
 const char* userName = "odroid";
@@ -293,7 +282,7 @@ char outCount;
 
 WiFiClient dclient;
 WiFiClient cclient;
-
+/*
 byte doFTP()
 {
     char fileName[13];
@@ -403,7 +392,7 @@ byte doFTP()
   println_out(F("File closed"));
   return 1;
 }
-
+*/
 byte eRcv()
 {
   byte respCode;
@@ -454,6 +443,23 @@ void efail()
 
   cclient.stop();
   println_out(F("Command disconnected"));
+}
+
+void RTC_validateCRC(){
+  // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
+  uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
+  rtcData.valid = false;
+  if( crc == rtcData.crc32 ) {
+    println_out("RTC CRC TRUE");
+    rtcData.valid = true;
+  }
+  else println_out("RTC CRC FALSE");
+}
+
+
+void RTC_saveCRC(){
+  print_out("Saving RTC memory\n");
+  rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
 }
 
 uint32_t calculateCRC32( const uint8_t *data, size_t length ) {

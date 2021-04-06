@@ -17,36 +17,35 @@
 #include "main.hpp"
 #include "communication.hpp"
 #include "certificates.h"
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
-#include <ESP8266HTTPClient.h>
-#include <DHT.h>
+//#include <ESP8266WiFi.h>
+//#include <ESP8266WebServer.h>
+//#include <ESP8266mDNS.h>
+//#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+//#include <ESP8266HTTPClient.h>
 #include <Ticker.h>
 #include <DNSServer.h>
 #include "BMP280.h"
 #include <PubSubClient.h>
 #include <WiFiUdp.h>
 #include <EEPROM.h>
-#include <ESP8266httpUpdate.h>
+//#include <ESP8266httpUpdate.h>
 #include "FS.h"
 #include <time.h>
 
-//DHT dht(DHT_PIN, DHT_TYPE);
-ESP8266WebServer server (80);
+#include <WiFiClientSecure.h>
+#include <rom/rtc.h>
+extern "C" int rom_phy_get_vdd33();
+#include "SPIFFS.h"
+
 BMP280 bmp;
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 File f;
-#if SZELEP
-ADC_MODE(ADC_VCC);
-#endif
 
 //const char* host = "192.168.1.100";
 const char* mosquitto_user = "titok";
 const char* mosquitto_pass = "titok";
-char device_id[25];
+char device_id[16];
 int mqtt_port= 8883;
 
 uint32_t voltage;
@@ -65,17 +64,20 @@ String ID;
 int mqtt_done=0;
 
 void setup() {
-  //valve_open_on_button(); nehézkessé teszi a soros port használatát ezért van kikommentelve
-  if( ESP.getResetReason() != "Power on" && ESP.getResetReason() != "Deep-Sleep Wake" && ESP.getResetReason() != "Software/System restart") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
   Serial.begin(115200);
+  if( reset_reason(0) != "POWERON_RESET" && reset_reason(0) != "SW_RESET" && reset_reason(0) != "DEEPSLEEP_RESET") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
+  
   delay(50);
-  ID = String(ESP.getChipId(), HEX) + "-" + String(ESP.getFlashChipId(), HEX);
-  ID.toCharArray(device_id, 25); 
+  String ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);  //String function doesnt know uint64_t
+  ID.toCharArray(device_id, 16); 
   format();
   f = create_file();
   println_out("\n-----------------------ESP8266 alive-----------------------------------------\n");
-  println_out(ESP.getResetReason());
-  rtc_read();
+  println_out("Reset reason for CPU0:");
+  println_out(reset_reason(0));
+  print_out("Reset reason for CPU1:");
+  println_out(reset_reason(1));
+  RTC_validateCRC();
   //valve_open_on_switch();
   setup_wifi();
   print_out("ID: ");   println_out(ID);
@@ -87,8 +89,8 @@ void setup() {
   //if (valve_state() && !winter_state) valve_turn_off();    //EEPROMba vagy SPIFFbe tarolni, hogy epp winter state van-e? utanna ellenorizni!!!
   if (valve_state()) valve_turn_off();
   println_out("Setting up certificates");
-  espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
-  espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+  espClient.setCertificate(certificates_bin_crt);
+  espClient.setPrivateKey(certificates_bin_key);
   println_out("Setting up mqtt callback, wifi");
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
@@ -101,12 +103,11 @@ void setup() {
   ver = VERSION;  ver += '.';  ver += SZELEP;
   print_out("version:"); println_out(ver);
   rtcData.open_on_switch = 0;                 //ez a két sor arra kell ha a kapcsolóval akaruk aktiválni az öntözést
-  RTC_save();
   if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
     println_out("checking for update!");
-    t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
-    http_update_answer(ret);
+    //t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
+    //http_update_answer(ret);
   }
 }
 
@@ -127,7 +128,7 @@ void loop() {
     mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
     mqttsend_d(P, device_id, "/PRESSURE", 3);
     mqttsend_s(ver.c_str(), device_id, "/VERSION");
-    mqttsend_s(ESP.getResetReason().c_str(), device_id, "/RST_REASON");
+    mqttsend_s(reset_reason(0).c_str(), device_id, "/RST_REASON");
     mqttsend_d((float)flowmeter_int / FLOWMETER_CALIB_VOLUME, device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
     mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
     mqttsend_i(0, device_id, "/READY_FOR_DATA");
@@ -140,7 +141,7 @@ void loop() {
       print_out(".");
     }
   }
-  if (remote_update && (valve_state() == 0 || winter_state == 1))  {web_update(remote_update); println_out("\nSetting up Webupdate");}
+  //if (remote_update && (valve_state() == 0 || winter_state == 1))  {web_update(remote_update); println_out("\nSetting up Webupdate");}
   if (winter_state == 1)  winter_mode(); 
   if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
   if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
@@ -283,7 +284,7 @@ void setup_pins(){
   pinMode(VALVE_SWITCH_TWO, INPUT);
 }
 
-void go_sleep_callback(WiFiManager *myWiFiManager){
+void go_sleep_callback(/*WiFiManager *myWiFiManager*/void *){
   go_sleep(SLEEP_TIME_NO_WIFI, 0);
 }
 
@@ -293,26 +294,27 @@ void go_sleep(float microseconds, int winter_state){
     valve_turn_off();
   }
   //WiFi.disconnect();  //nehezen akart ezzel visszacsatlakozni
-  if (remote_log)  send_log();
-  espClient.stop();
+  //if (remote_log)  send_log();
   print_out("time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
   if(microseconds - micros() > MINIMUM_DEEP_SLEEP_TIME){  //korrekcio a bekapcsolva levo idore 
     microseconds = microseconds - micros();
   }
- 
+
   time_t now = time(nullptr);
-  if(now == 0 && rtcData.valid && ESP.getResetReason() != "Power on"){
+  if( WiFi.status() != WL_CONNECTED ){//"Power on"
     rtcData.epoch += (time_t)millis()/1000; //Az RTCben tárolt epoch értékehz hozzáadom a bekapolcst állapotban levő időhosszt
     now = rtcData.epoch;  //Az RTCben tárolt érték lesz a jelenlegi időpont
   }
   else rtcData.epoch = now;
   rtcData.epoch += (time_t)microseconds/1000000; //Az RTCbet tárolt epoch értékét megnövelem az deepsleep állapotban levő időhosszal
   println_out(ctime(&now));
-  RTC_save();
+  RTC_saveCRC();
   print_out("Previous unsuccessful wifi connection attempts: "); print_out((String)rtcData.attempts);
   print_out("Entering in deep sleep for: "); print_out(String((float)microseconds/1000000)); println_out(" s");
+  espClient.stop();
   close_file();
   delay(100);
+  ESP.deepSleep(30*1000000);
   ESP.deepSleep(microseconds); //az elozo sort vonom ki
   delay(100);
 }
@@ -348,7 +350,7 @@ float read_voltage(){
   return voltage;
 #else
   voltage = 0;
-  for (int j = 0; j < 10; j++) {voltage+=ESP.getVcc(); /*Serial.println(ESP.getVcc());*/}
+  for (int j = 0; j < 10; j++) {voltage+=((float)rom_phy_get_vdd33()); /*Serial.println(ESP.getVcc());*/}//ESP.getVcc()
   voltage = (voltage / 10) - VOLTAGE_CALIB; //-0.2V
   print_out("Voltage:");  println_out(String(voltage));
   return voltage;
@@ -490,39 +492,8 @@ void alternative_startup(){
   SPIFFS.end();
   setup_wifi();
   Wait_for_WiFi();
-  t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
-  http_update_answer(ret);
-}
-
-void RTC_save(){
-  print_out("Saving RTC memory\n");
-  rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
-  ESP.rtcUserMemoryWrite( 0, (uint32_t*)&rtcData, sizeof( rtcData ) );
-}
-
-void valve_open_on_button(){
-#if SZELEP
-  if(ESP.getChipId() != 0x795041 && ESP.getChipId() != 0x288f83){
-    pinMode(TXD_PIN, INPUT);
-    if(!digitalRead(TXD_PIN) && read_voltage() > MINIMUM_VALVE_OPEN_VOLTAGE){
-      pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
-      pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
-      delay(100);
-      digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
-      digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
-      wifi_fpm_close();
-      WiFi.forceSleepBegin();
-      while(read_voltage() > MINIMUM_VALVE_OPEN_VOLTAGE){
-        delay(60000);
-      }
-      digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
-      digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 0);
-      delay(MAX_VALVE_SWITCHING_TIME);
-      ESP.deepSleep(sleep_time_seconds);
-    }
-    pinMode(TXD_PIN, OUTPUT);
-  }
-#endif 
+  //t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
+  //http_update_answer(ret);
 }
 
 void valve_open_on_switch(){
@@ -534,8 +505,6 @@ void valve_open_on_switch(){
     delay(100);
     digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
     digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
-    wifi_fpm_close();
-    WiFi.forceSleepBegin();
     while(((float)read_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){ //Letesztelni hogy ez mukodik e!! Alacsony feszultsegnel be kell csukodnia!
       delay(60000);
     }
@@ -549,4 +518,27 @@ void valve_open_on_switch(){
   rtcData.open_on_switch = 1;
   RTC_save();
 #endif 
+}
+
+String reset_reason(int icore) //returns reset reason for specified core
+{
+  switch (rtc_get_reset_reason( (RESET_REASON) icore))
+  {
+    case 1 : return (String)("POWERON_RESET");          /**<1,  Vbat power on reset*/
+    case 3 : return (String)("SW_RESET");               /**<3,  Software reset digital core*/
+    case 4 : return (String)("OWDT_RESET");             /**<4,  Legacy watch dog reset digital core*/
+    case 5 : return (String)("DEEPSLEEP_RESET");        /**<5,  Deep Sleep reset digital core*/
+    case 6 : return (String)("SDIO_RESET");             /**<6,  Reset by SLC module, reset digital core*/
+    case 7 : return (String)("TG0WDT_SYS_RESET");       /**<7,  Timer Group0 Watch dog reset digital core*/
+    case 8 : return (String)("TG1WDT_SYS_RESET");       /**<8,  Timer Group1 Watch dog reset digital core*/
+    case 9 : return (String)("RTCWDT_SYS_RESET");       /**<9,  RTC Watch dog Reset digital core*/
+    case 10 : return (String)("INTRUSION_RESET");       /**<10, Instrusion tested to reset CPU*/
+    case 11 : return (String)("TGWDT_CPU_RESET");       /**<11, Time Group reset CPU*/
+    case 12 : return (String)("SW_CPU_RESET");          /**<12, Software reset CPU*/
+    case 13 : return (String)("RTCWDT_CPU_RESET");      /**<13, RTC Watch dog Reset CPU*/
+    case 14 : return (String)("EXT_CPU_RESET");         /**<14, for APP CPU, reseted by PRO CPU*/
+    case 15 : return (String)("RTCWDT_BROWN_OUT_RESET");/**<15, Reset when the vdd voltage is not stable*/
+    case 16 : return (String)("RTCWDT_RTC_RESET");      /**<16, RTC Watch dog reset digital core and rtc module*/
+    default : return (String)("NO_MEAN");
+  }
 }

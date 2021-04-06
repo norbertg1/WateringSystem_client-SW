@@ -2,6 +2,8 @@
 #define COM_H
 
 #include <Arduino.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPAsyncWiFiManager.h>         //https://github.com/tzapu/WiFiManager
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length);
 void mqtt_reconnect();
@@ -19,7 +21,8 @@ byte doFTP();
 byte eRcv();
 void efail();
 void Wait_for_WiFi();
-void rtc_read();
+void RTC_saveCRC();
+void RTC_validateCRC();
 
 // The ESP8266 RTC memory is arranged into blocks of 4 bytes. The access methods read and write 4 bytes at a time,
 // so the RTC data structure should be padded to a 4-byte multiple.
@@ -32,7 +35,9 @@ struct RTCData{
   uint8_t attempts; // 1 byte,  17 in total
   uint8_t winter_state; // 1 byte,  18 in total
   uint8_t open_on_switch; // 1 byte,  19 in total ez arra kell, hogy a kapcsolóval is bel lehessen kapcsolni a locsolót
-  uint8_t padding[1];  // 1 byte,  20 in total
+  char    ssid[32];       //32 byte, 51 in total
+  char    psk[63];       //63 byte, 114 in total
+  uint8_t padding[2];  // 2 byte,  116 in total
 };
 
 extern struct RTCData rtcData;
