@@ -2,11 +2,13 @@
 server_on_ubuntu/server/webpage/www/html/esp/update/log/**
 server_on_ubuntu/server/webpage/www/html/esp/update/bin/**
 server_on_ubuntu/server/old_mysql_database_2020.3.29/**
+.pio/*
 
 # keys, certificates
 *.crt
 *.csr
 *.key
+certificates.h
 
 # Object files
 *.o

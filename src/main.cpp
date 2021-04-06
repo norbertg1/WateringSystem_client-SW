@@ -16,7 +16,6 @@
 */
 #include "main.hpp"
 #include "communication.hpp"
-#include "certificates.h"
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
@@ -32,6 +31,8 @@
 #include <ESP8266httpUpdate.h>
 #include "FS.h"
 #include <time.h>
+#include "certificates.h"
+
 
 //DHT dht(DHT_PIN, DHT_TYPE);
 ESP8266WebServer server (80);
@@ -44,8 +45,6 @@ ADC_MODE(ADC_VCC);
 #endif
 
 //const char* host = "192.168.1.100";
-const char* mosquitto_user = "titok";
-const char* mosquitto_pass = "titok";
 char device_id[25];
 int mqtt_port= 8883;
 
@@ -87,15 +86,15 @@ void setup() {
   //if (valve_state() && !winter_state) valve_turn_off();    //EEPROMba vagy SPIFFbe tarolni, hogy epp winter state van-e? utanna ellenorizni!!!
   if (valve_state()) valve_turn_off();
   println_out("Setting up certificates");
-  espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
-  espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+  espClient.setCertificate(esp8266_bin_crt, esp8266_bin_crt_len);
+  espClient.setPrivateKey(esp8266_bin_key, esp8266_bin_key_len);
   println_out("Setting up mqtt callback, wifi");
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
   config_time();
   Wait_for_WiFi();
   print_out("IP address:  ");
-  println_out(String(WiFi.localIP()));
+  //println_out(String(WiFi.localIP()));
   print_out("RSSI: ");
   println_out(String(WiFi.RSSI()));
   ver = VERSION;  ver += '.';  ver += SZELEP;

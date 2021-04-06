@@ -1,6 +1,5 @@
 #include "communication.hpp"
 #include "main.hpp"
-#include "certificates.h"
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
 struct RTCData rtcData;
@@ -77,10 +76,6 @@ void mqtt_reconnect() {
       client.subscribe(buf_name);
       mqttsend_i(i, device_id, "/DEBUG");
       client.loop();
-    }
-    if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
-      espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
-      espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
     }
     print_out(".");
     i++;
