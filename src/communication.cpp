@@ -1,9 +1,11 @@
 #include "communication.hpp"
 #include "main.hpp"
-#include "certificates.h"
+#include "esp_certificates.h"
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
 RTC_DATA_ATTR struct RTCData rtcData;
+const char mqtt_user[] = "titok";
+const char mqtt_pass[] = "titok";
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezekre a csatornakra iratkozok fel
   char buff[70];
@@ -55,7 +57,8 @@ void mqtt_reconnect() {
   char buf_name[50];
   int i=0;
   int attempts_max = 3;
-  println_out("Connceting to MQTT server");
+  print_out("Connceting to MQTT server as:"); println_out(ID);
+  client.connect(ID.c_str(), mqtt_user , mqtt_pass);
   if (valve_state()) attempts_max=20;
   while(client.state() != 0 && i < attempts_max){
 	if(!client.connected()) {

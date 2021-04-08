@@ -16,7 +16,7 @@
 */
 #include "main.hpp"
 #include "communication.hpp"
-#include "certificates.h"
+#include "esp_certificates.h"
 //#include <ESP8266WiFi.h>
 //#include <ESP8266WebServer.h>
 //#include <ESP8266mDNS.h>
@@ -70,7 +70,7 @@ void setup() {
   println_out("Reset reason for CPU1:");
   println_out(reset_reason(1));
   //if( reset_reason(0) != "POWERON_RESET" && reset_reason(0) != "SW_RESET" && reset_reason(0) != "DEEPSLEEP_RESET") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
-  String ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);  //String function doesnt know uint64_t
+  ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);  //String function doesnt know uint64_t
   ID.toCharArray(device_id, 16);
   get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   format();
@@ -89,13 +89,19 @@ void setup() {
   println_out(String(WiFi.localIP().toString()));
   print_out("RSSI: ");
   println_out(String(WiFi.RSSI()));
-  config_time();
+  //config_time();
+  configTime(18000, 14400, "pool.ntp.org", "time.nist.gov");
+  delay(10000);
+  time_t now = time(nullptr);
+  println_out(ctime(&now));
   println_out("Setting up mqtt certificates and callback");
-  espClient.setCACert(CA_cert);
+  espClient.setHandshakeTimeout(10000);
+  espClient.setCACert(root_CA_cert);
   espClient.setPrivateKey(ESP_RSA_key);
   espClient.setCertificate(ESP_CA_cert);
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
+  client.connect(ID.c_str(), "titok" , "titok");
   ver = VERSION;  ver += '.';  ver += SZELEP;
   print_out("Version: "); println_out(ver);
   rtcData.open_on_switch = 0;                 //ez a két sor arra kell ha a kapcsolóval akaruk aktiválni az öntözést
