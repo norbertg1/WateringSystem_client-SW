@@ -21,7 +21,6 @@
 #define WEB_UPDATE_TIMEOUT_SECONDS        300                             //The time out for web update server in seconds 
 #define SLEEP_TIME_NO_WIFI_SECONDS        30//3600                            //When cannot connect to wifi network, sleep time between two attempts
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
-#define VERSION                           "v1.68"
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
 //------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
@@ -101,7 +100,8 @@ void valve_open_on_switch();
 int get_reset_reason(int icore);
 String reset_reason(int icore);
 
-extern WiFiClientSecure espClient;
+//extern WiFiClientSecure espClient;
+extern WiFiClient espClient;
 extern PubSubClient client;
 //extern ESP8266WebServer server;
 

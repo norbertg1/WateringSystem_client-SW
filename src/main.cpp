@@ -29,6 +29,7 @@
 #include <WiFiUdp.h>
 #include <EEPROM.h>
 //#include <ESP8266httpUpdate.h>
+#include <HTTPUpdate.h>
 #include "FS.h"
 #include <time.h>
 
@@ -39,7 +40,8 @@ extern "C" int rom_phy_get_vdd33();
 #include "SPIFFS.h"
 
 BMP280 bmp;
-WiFiClientSecure espClient;
+//WiFiClientSecure espClient;
+WiFiClient espClient;
 PubSubClient client(espClient);
 File f;
 
@@ -77,6 +79,8 @@ void setup() {
   f = create_file();
   RTC_validateCRC();
   setup_wifi();
+  print_out("SDK: ");   println_out(ESP.getSdkVersion());
+  print_out("Version: "); println_out(VERSION);
   print_out("ID: ");   println_out(ID);
   print_out("MAC: ");   println_out(WiFi.macAddress());
   setup_pins();
@@ -89,27 +93,19 @@ void setup() {
   println_out(String(WiFi.localIP().toString()));
   print_out("RSSI: ");
   println_out(String(WiFi.RSSI()));
-  //config_time();
-  configTime(18000, 14400, "pool.ntp.org", "time.nist.gov");
-  delay(10000);
-  time_t now = time(nullptr);
-  println_out(ctime(&now));
+  config_time();
   println_out("Setting up mqtt certificates and callback");
-  espClient.setHandshakeTimeout(10000);
-  espClient.setCACert(root_CA_cert);
-  espClient.setPrivateKey(ESP_RSA_key);
-  espClient.setCertificate(ESP_CA_cert);
+  //espClient.setHandshakeTimeout(10000);
+  //espClient.setCACert(root_CA_cert);
+  //espClient.setPrivateKey(ESP_RSA_key);
+  //espClient.setCertificate(ESP_CA_cert);
   client.setServer(MQTT_SERVER, mqtt_port);
   client.setCallback(mqtt_callback);
-  client.connect(ID.c_str(), "titok" , "titok");
-  ver = VERSION;  ver += '.';  ver += SZELEP;
-  print_out("Version: "); println_out(ver);
-  rtcData.open_on_switch = 0;                 //ez a két sor arra kell ha a kapcsolóval akaruk aktiválni az öntözést
   if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
-    println_out("checking for update!");
-    //t_httpUpdate_return ret = ESPhttpUpdate.update(MQTT_SERVER, 80, "/esp/update/esp8266.php", ver);
-    //http_update_answer(ret);
+    println_out("Checking for update!");
+    t_httpUpdate_return ret = httpUpdate.update(espClient,MQTT_SERVER, 80, "/esp/update/update.php", VERSION);
+    http_update_answer(ret);
   }
 }
 
