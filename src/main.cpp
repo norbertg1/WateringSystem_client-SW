@@ -38,11 +38,12 @@
 #include <rom/rtc.h>
 extern "C" int rom_phy_get_vdd33();
 #include "SPIFFS.h"
+#include "Client.h"
 
 BMP280 bmp;
-//WiFiClientSecure espClient;
-WiFiClient espClient;
-PubSubClient client(espClient);
+WiFiClientSecure WifiSecureClient;
+WiFiClient WifiClient;
+PubSubClient mqtt_client(WifiSecureClient);
 File f;
 
 //const char* host = "192.168.1.100";
@@ -61,8 +62,23 @@ int flowmeter_int=0;
 float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
 String ver;
-String ID;
+String ID ;
 int mqtt_done=0;
+
+class mqtt {
+   public:
+	    PubSubClient mqttt;
+	    mqtt(WiFiClientSecure client){
+        mqttt = PubSubClient (client);
+	    }
+
+      void valami(){
+        mqttt.state();
+      }
+      
+};
+
+mqtt mqttt_client(WifiSecureClient);
 
 void setup() {
   Serial.begin(115200);
@@ -95,81 +111,67 @@ void setup() {
   println_out(String(WiFi.RSSI()));
   config_time();
   println_out("Setting up mqtt certificates and callback");
-  //espClient.setHandshakeTimeout(10000);
-  //espClient.setCACert(root_CA_cert);
-  //espClient.setPrivateKey(ESP_RSA_key);
-  //espClient.setCertificate(ESP_CA_cert);
-  client.setServer(MQTT_SERVER, mqtt_port);
-  client.setCallback(mqtt_callback);
+  WifiSecureClient.setCACert(root_CA_cert);
+  WifiSecureClient.setPrivateKey(ESP_RSA_key);
+  WifiSecureClient.setCertificate(ESP_CA_cert);
+  mqtt_client.setServer(MQTT_SERVER, mqtt_port);
+  mqtt_client.setCallback(mqtt_callback);
   if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
     println_out("Checking for update!");
-    t_httpUpdate_return ret = httpUpdate.update(espClient,MQTT_SERVER, 80, "/esp/update/update.php", VERSION);
+    t_httpUpdate_return ret = httpUpdate.update(WifiClient,MQTT_SERVER, 80, "/esp/update/update.php", VERSION);
     http_update_answer(ret);
   }
 }
 
 void loop() {
   //valve_test();
-  on_off_command = 0; //teszt 2018.9.13
+  on_off_command = 0;
   mqtt_reconnect();
-  if (client.connected()) {
+  if (mqtt_client.connected()) {
+    mqtt_send_measurements();
+    print_out("Waiting for commands:\n");
+    mqtt_client.loop();
     mqtt_done=0;
-    client.loop();
-    println_out("sending temperature");
-    mqttsend_d(T, device_id, "/TEMPERATURE", 1);
-    println_out("sending moisture");
-    mqttsend_d(moisture, device_id, "/MOISTURE", 2);
-    println_out("sending RSSI");
-    mqttsend_i(WiFi.RSSI(), device_id, "/RSSI");
-    println_out("sending voltage,etc..");
-    mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
-    mqttsend_d(P, device_id, "/PRESSURE", 3);
-    mqttsend_s(ver.c_str(), device_id, "/VERSION");
-    mqttsend_s(reset_reason(0).c_str(), device_id, "/RST_REASON");
-    mqttsend_d((float)flowmeter_int / FLOWMETER_CALIB_VOLUME, device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
-    mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
-    mqttsend_i(0, device_id, "/READY_FOR_DATA");
-    print_out("Waiting for commands");
-    client.loop();
-    for (int i = 0; i < 1000; i++) {
-      delay(10);
-      client.loop();                  //Itt várok az adatra, talán szebben is lehetne
+    for (int i = 0; i < 100; i++) {
+      delay(100);
+      mqtt_client.loop();                  //Itt várok az adatra, talán szebben is lehetne
       if (mqtt_done == 5) break;
-      print_out(".");
+      //print_out(".");
     }
+    print_out("\nNumber of received commands: "); println_out(String(mqtt_done));
   }
   //if (remote_update && (valve_state() == 0 || winter_state == 1))  {web_update(remote_update); println_out("\nSetting up Webupdate");}
   if (winter_state == 1)  winter_mode(); 
-  if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(client.state()))  valve_turn_on();
-  if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (client.state()))        valve_turn_off();
+  if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(mqtt_client.state()))  valve_turn_on();
+  if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (mqtt_client.state()))        valve_turn_off();
   delay(100);
   if ((valve_state() == 1) || (valve_state() == 14)) {       //ha a szelep nyitva van
     print_out("Valve state: "); println_out(String(valve_state()));
     flow_meter_calculate_velocity();
     mqtt_reconnect();
-    if (client.connected()) {
-      print_out("szelept nyitva");
-      client.loop();
+    if (mqtt_client.connected()) {
+      print_out("szelep nyitva");
+      mqtt_client.loop();
       mqttsend_i(on_off_command, device_id, "/ON_OFF_STATE"); //ez elég fura, utánnajárni
       mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
       mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
       mqttsend_i(0, device_id, "/END");
-      client.loop();
+      mqtt_client.loop();
       delay(100);
-      client.disconnect();
+      mqtt_client.disconnect();
     }
   }
   else{                                                   //ha a szelep nincs nyitva
-    if (client.connected()) {
+    if (mqtt_client.connected()) {
       print_out("\nszelept nincs nyitva\n");
       mqtt_reconnect();
       mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
       mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
       mqttsend_i(0, device_id, "/END");
       delay(100);
-      client.disconnect();
+      mqtt_client.disconnect();
     }
     go_sleep(SLEEP_TIME, 0);    
   }
@@ -185,16 +187,34 @@ void loop() {
     attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
 }
 
+void mqtt_send_measurements(){
+  mqtt_client.loop();
+  println_out("sending temperature");
+  mqttsend_d(T, device_id, "/TEMPERATURE", 1);
+  println_out("sending moisture");
+  mqttsend_d(moisture, device_id, "/MOISTURE", 2);
+  println_out("sending RSSI");
+  mqttsend_i(WiFi.RSSI(), device_id, "/RSSI");
+  println_out("sending voltage,etc..");
+  mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
+  mqttsend_d(P, device_id, "/PRESSURE", 3);
+  mqttsend_s(ver.c_str(), device_id, "/VERSION");
+  mqttsend_s(reset_reason(0).c_str(), device_id, "/RST_REASON");
+  mqttsend_d((float)flowmeter_int / FLOWMETER_CALIB_VOLUME, device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
+  mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
+  mqttsend_i(0, device_id, "/READY_FOR_DATA");
+}
+
 void winter_mode(){
   valve_turn_on();
-  if (client.connected()) {
+  if (mqtt_client.connected()) {
     mqtt_reconnect();
     print_out("Winter mode\n"); print_out("Valve state: "); println_out(String(valve_state()));
     mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
     mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
     mqttsend_i(0, device_id, "/END");
     delay(100);
-    client.disconnect();
+    mqtt_client.disconnect();
     }
     go_sleep(SLEEP_TIME, 1);
 }
@@ -308,7 +328,7 @@ void go_sleep(float microseconds, int winter_state){
   RTC_saveCRC();
   print_out("Previous unsuccessful wifi connection attempts: "); print_out((String)rtcData.attempts);
   print_out("Entering in deep sleep for: "); print_out(String((float)microseconds/1000000)); println_out(" s");
-  espClient.stop();
+  WifiSecureClient.stop();
   close_file();
   delay(100);
   ESP.deepSleep(30*1000000);

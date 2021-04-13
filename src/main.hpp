@@ -51,7 +51,7 @@
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.1   //If valve is closed
 #define VALVE_CLOSE_VOLTAGE               3.05   //If valve is open
 #define MAX_LOG_FILE_SIZE                 409600
-#define SZELEP                            1
+#define SZELEP                            0
 #define FILE_SYSTEM                       0
 #define SERIAL_PORT                       1
 #define CONFIG_TIME                       1
@@ -99,11 +99,10 @@ void winter_mode();
 void valve_open_on_switch();
 int get_reset_reason(int icore);
 String reset_reason(int icore);
+void mqtt_send_measurements();
 
-//extern WiFiClientSecure espClient;
-extern WiFiClient espClient;
-extern PubSubClient client;
-//extern ESP8266WebServer server;
+extern WiFiClientSecure WifiSecureClient;
+extern PubSubClient mqtt_client;
 
 extern char device_id[16];
 extern const char* mosquitto_user;
@@ -115,5 +114,6 @@ extern int delay_time_seconds;
 extern int remote_update, remote_log;
 extern String ID;
 extern int winter_state;
+extern double T, P;
 
 #endif

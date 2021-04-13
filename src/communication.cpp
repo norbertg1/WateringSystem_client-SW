@@ -7,9 +7,12 @@ RTC_DATA_ATTR struct RTCData rtcData;
 const char mqtt_user[] = "titok";
 const char mqtt_pass[] = "titok";
 
+
+
+
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezekre a csatornakra iratkozok fel
   char buff[70];
-  print_out("\nMQTT callback: ");   
+  print_out("\nReceived message in topic: ");   
   println_out(topic);
   sprintf (buff, "%s%s", device_id, "/ON_OFF_COMMAND");
   if (!strcmp(topic, buff)) {
@@ -54,40 +57,41 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {     //ezek
 }
 
 void mqtt_reconnect() {
-  char buf_name[50];
-  int i=0;
-  int attempts_max = 3;
-  print_out("Connceting to MQTT server as:"); println_out(ID);
-  client.connect(ID.c_str(), mqtt_user , mqtt_pass);
-  if (valve_state()) attempts_max=20;
-  while(client.state() != 0 && i < attempts_max){
-	if(!client.connected()) {
-	  client.connect(ID.c_str(), mqtt_user , mqtt_pass);       //Az Ubuntun futó mosquitoba a bejelentkezési adatok
+	char buf_name[50];
+	int i=0;
+	int attempts_max = 3;
+	print_out("Connceting to MQTT server as: "); println_out(ID);
+	mqtt_client.connect(ID.c_str(), mqtt_user , mqtt_pass);
+	if (valve_state()) attempts_max=20;
+	Serial.println(mqtt_client.state());
+	while(mqtt_client.state() != 0 && i < attempts_max){
+		if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
+	  	//espClient.setCertificate(certificates_bin_crt);
+	  	//espClient.setPrivateKey(certificates_bin_key);
+		}
+		print_out(".");
+		i++;
+  	}
+	if(mqtt_client.connected()) {
+	  mqtt_client.connect(ID.c_str(), mqtt_user , mqtt_pass);       //Az Ubuntun futó mosquitoba a bejelentkezési adatok
 	  sprintf (buf_name, "%s%s", device_id, "/ON_OFF_COMMAND");
-	  client.subscribe(buf_name);
-	  client.loop();
+	  mqtt_client.subscribe(buf_name);
+	  mqtt_client.loop();
 	  sprintf (buf_name, "%s%s", device_id, "/SLEEP_TIME");
-	  client.subscribe(buf_name);
-	  client.loop();
+	  mqtt_client.subscribe(buf_name);
+	  mqtt_client.loop();
 	  sprintf (buf_name, "%s%s", device_id, "/DELAY_TIME");
-	  client.subscribe(buf_name);
-	  client.loop();
+	  mqtt_client.subscribe(buf_name);
+	  mqtt_client.loop();
 	  sprintf (buf_name, "%s%s", device_id, "/REMOTE_UPDATE");
-	  client.subscribe(buf_name);
+	  mqtt_client.subscribe(buf_name);
 	  sprintf (buf_name, "%s%s", device_id, "/REMOTE_LOG");
-	  client.subscribe(buf_name);
+	  mqtt_client.subscribe(buf_name);
 	  mqttsend_i(i, device_id, "/DEBUG");
-	  client.loop();
+	  mqtt_client.loop();
 	}
-	if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
-	  //espClient.setCertificate(certificates_bin_crt);
-	  //espClient.setPrivateKey(certificates_bin_key);
-	}
-	print_out(".");
-	i++;
-  }
-  print_out("\nMQTT attempts = "); print_out(String(i));
-  print_out(" The nMQTT state is: "); println_out(String(client.state()));
+	print_out("\nMQTT attempts = "); print_out(String(i));
+	print_out(" The nMQTT state is: "); println_out(String(mqtt_client.state()));
 }
 
 void mqttsend_d(double payload, char* device_id, char* topic, char precision){
@@ -95,7 +99,7 @@ void mqttsend_d(double payload, char* device_id, char* topic, char precision){
   char buff_payload[10];
   dtostrf(payload, 9, precision, buff_payload);
   sprintf (buff_topic, "%s%s", device_id, topic);
-  client.publish(buff_topic, buff_payload);
+  mqtt_client.publish(buff_topic, buff_payload);
 }
 
 void mqttsend_i(int payload, char* device_id, char* topic){
@@ -103,13 +107,13 @@ void mqttsend_i(int payload, char* device_id, char* topic){
   char buff_payload[10];
   itoa(payload, buff_payload, 10);
   sprintf (buff_topic, "%s%s", device_id, topic);
-  client.publish(buff_topic, buff_payload);
+  mqtt_client.publish(buff_topic, buff_payload);
 }
 
 void mqttsend_s(const char *payload, char* device_id, char* topic){
   char buff_topic[50];
   sprintf (buff_topic, "%s%s", device_id, topic);
-  client.publish(buff_topic, payload);
+  mqtt_client.publish(buff_topic, payload);
 }
 
 void setup_wifi() {
