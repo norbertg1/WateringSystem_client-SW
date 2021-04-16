@@ -9,10 +9,24 @@
 */
 #define ESP32
 #include <Arduino.h>
-#include "FS.h"
-#include <PubSubClient.h>
-//#include <ESP8266httpUpdate.h>
 #include "HTTPUpdate.h"
+#include "esp_certificates.h"
+
+#include <Ticker.h>
+#include <DNSServer.h>
+#include "BMP280.h"
+#include <WiFiUdp.h>
+#include <EEPROM.h>
+#include "FS.h"
+#include <time.h>
+
+#include <WiFiClientSecure.h>
+
+#include <rom/rtc.h>
+extern "C" int rom_phy_get_vdd33();
+#include "communication.hpp"
+#include "peripherals.hpp"
+#include "filesystem.hpp"
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
@@ -71,38 +85,27 @@
 
 void valve_turn_on();
 void valve_turn_off();
+void valve_is_open();
+void valve_is_closed();
 int  valve_state();
 void valve_test();
-void flow_meter_calculate_velocity();
-void get_TempPressure();
+void valve_open_on_switch();
 void go_sleep(float microseconds, int winter_state);
-float read_voltage();
-void read_moisture();
 void go_sleep_callback(/*WiFiManager *myWiFiManager*/void *);
-void mqttsend_d(double payload, String device_id, String topic,char precision);
-void http_update_answer(t_httpUpdate_return ret);
-void mqttsend_i(int payload, char* device_id, char* topic);
-void mqttsend_d(double payload, char* device_id, char* topic, char precision);
-File create_file();
-void close_file();
 void print_out(String str);
 void println_out(String str);
 void alternative_startup();
-void format();
 void setup_pins();
 void config_time();
-void flow_meter_interrupt();
-void RTC_save();
-void format_now();
-void valve_open_on_button();
 void winter_mode();
-void valve_open_on_switch();
 int get_reset_reason(int icore);
 String reset_reason(int icore);
-void mqtt_send_measurements();
+void send_measurements_to_server();
+void RTC_saveCRC();
+void RTC_validateCRC();
 
 extern WiFiClientSecure WifiSecureClient;
-extern PubSubClient mqtt_client;
+extern mqtt mqtt_client;
 
 extern char device_id[16];
 extern const char* mosquitto_user;
@@ -114,6 +117,5 @@ extern int delay_time_seconds;
 extern int remote_update, remote_log;
 extern String ID;
 extern int winter_state;
-extern double T, P;
 
 #endif

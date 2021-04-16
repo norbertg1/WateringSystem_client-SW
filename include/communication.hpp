@@ -1,9 +1,12 @@
-#ifndef COM_H
-#define COM_H
+#pragma once
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPAsyncWiFiManager.h>         //https://github.com/tzapu/WiFiManager
+#include <PubSubClient.h>
+#include <WiFiClientSecure.h>
+#include "esp_certificates.h"
+#include <HTTPUpdate.h>
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length);
 void mqtt_reconnect();
@@ -12,17 +15,12 @@ void start_wifimanager();
 void web_update_setup();
 void web_update(long long minutes);
 void send_log();
-void mqttsend_d(double payload, char* device_id, char* topic, char precision);
-void mqttsend_i(int payload, char* device_id, char* topic);
-void mqttsend_s(const char *payload, char* device_id, char* topic);
 uint32_t calculateCRC32( const uint8_t *data, size_t length );
-String getSsidPass( String s );
-byte doFTP();
-byte eRcv();
-void efail();
+//String getSsidPass( String s );
+
 void Wait_for_WiFi();
-void RTC_saveCRC();
-void RTC_validateCRC();
+
+void http_update_answer(t_httpUpdate_return ret);
 
 // The ESP8266 RTC memory is arranged into blocks of 4 bytes. The access methods read and write 4 bytes at a time,
 // so the RTC data structure should be padded to a 4-byte multiple.
@@ -39,6 +37,16 @@ struct RTCData{
   char    psk[63];       //63 byte, 114 in total
   uint8_t padding[2];  // 2 byte,  116 in total
 };
-
 extern struct RTCData rtcData;
-#endif
+
+
+class mqtt : public PubSubClient{
+   public:
+    PubSubClient pubsubclient;
+    mqtt(WiFiClientSecure& cclient);
+    void callback_function(char* topic, byte* payload, unsigned int length);
+    void reconnect();
+    void send_d(double payload, char* device_id, char* topic, char precision);
+    void send_i(int payload, char* device_id, char* topic);
+    void send_s(const char *payload, char* device_id, char* topic);
+};

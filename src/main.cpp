@@ -15,70 +15,40 @@
    
 */
 #include "main.hpp"
-#include "communication.hpp"
-#include "esp_certificates.h"
-//#include <ESP8266WiFi.h>
-//#include <ESP8266WebServer.h>
-//#include <ESP8266mDNS.h>
-//#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
-//#include <ESP8266HTTPClient.h>
-#include <Ticker.h>
-#include <DNSServer.h>
-#include "BMP280.h"
-#include <PubSubClient.h>
-#include <WiFiUdp.h>
-#include <EEPROM.h>
-//#include <ESP8266httpUpdate.h>
-#include <HTTPUpdate.h>
-#include "FS.h"
-#include <time.h>
 
-#include <WiFiClientSecure.h>
-
-#include <rom/rtc.h>
-extern "C" int rom_phy_get_vdd33();
-#include "SPIFFS.h"
-#include "Client.h"
-
-BMP280 bmp;
-WiFiClientSecure WifiSecureClient;
 WiFiClient WifiClient;
-PubSubClient mqtt_client(WifiSecureClient);
 File f;
 
 //const char* host = "192.168.1.100";
 char device_id[16];
-int mqtt_port= 8883;
+int mqtt_port = 8883;
 
-uint32_t voltage;
-double T, P;
-float temp, temperature, moisture;
-int RSSI_value;
 int locsolo_state = LOW, on_off_command = LOW, winter_state = LOW;
 int sleep_time_seconds = 900;                  //when watering is off, in seconds
 int delay_time_seconds = 60;                   //when watering is on, in seconds
 int remote_update = 0, remote_log=0;
-int flowmeter_int=0;
-float flowmeter_volume, flowmeter_velocity;
 int valve_timeout=0;
 String ver;
 String ID ;
 int mqtt_done=0;
 
-class mqtt {
-   public:
-	    PubSubClient mqttt;
-	    mqtt(WiFiClientSecure client){
-        mqttt = PubSubClient (client);
-	    }
+WiFiClientSecure WifiSecureClient;
+mqtt mqtt_client(WifiSecureClient);
 
-      void valami(){
-        mqttt.state();
-      }
-      
-};
+flowmeter Flowmeter;
+voltage Battery;
+moisture Soil;
+thermometer Thermometer;
+humiditySensor HumiditySensor;
+pressureSensor PressureSensor;
 
-mqtt mqttt_client(WifiSecureClient);
+void flowmeter_callback(){
+  Flowmeter.flowmeter_interrupt();
+}
+
+void mqtt_callback(char* topic, byte* payload, unsigned int length){
+  mqtt_client.callback_function(topic, payload, length);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -87,10 +57,10 @@ void setup() {
   println_out(reset_reason(0));
   println_out("Reset reason for CPU1:");
   println_out(reset_reason(1));
+  Serial.println((int)mqtt_client._client);
   //if( reset_reason(0) != "POWERON_RESET" && reset_reason(0) != "SW_RESET" && reset_reason(0) != "DEEPSLEEP_RESET") alternative_startup();  //Ez azért hogy ha hiba volna a programban akkor is újarindulás után OTAn frissíthető váljon a rendszer
   ID = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX) + String((uint32_t)ESP.getEfuseMac(), HEX);  //String function doesnt know uint64_t
   ID.toCharArray(device_id, 16);
-  get_TempPressure();       //Azért az elején mert itt még nem melegedett fel a szenzor
   format();
   f = create_file();
   RTC_validateCRC();
@@ -100,8 +70,11 @@ void setup() {
   print_out("ID: ");   println_out(ID);
   print_out("MAC: ");   println_out(WiFi.macAddress());
   setup_pins();
-  read_voltage();
-  read_moisture();
+  Thermometer.read();
+  HumiditySensor.read();
+  PressureSensor.read();
+  Battery.read_voltage();
+  Soil.read_moisture();
   //if (valve_state() && !winter_state) valve_turn_off();    //EEPROMba vagy SPIFFbe tarolni, hogy epp winter state van-e? utanna ellenorizni!!!
   if (valve_state()) valve_turn_off();
   Wait_for_WiFi();
@@ -110,13 +83,13 @@ void setup() {
   print_out("RSSI: ");
   println_out(String(WiFi.RSSI()));
   config_time();
-  println_out("Setting up mqtt certificates and callback");
   WifiSecureClient.setCACert(root_CA_cert);
   WifiSecureClient.setPrivateKey(ESP_RSA_key);
   WifiSecureClient.setCertificate(ESP_CA_cert);
   mqtt_client.setServer(MQTT_SERVER, mqtt_port);
   mqtt_client.setCallback(mqtt_callback);
-  if((float)voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
+  Serial.print("WifiSecureClient: "); Serial.println(WifiSecureClient.remoteIP());
+  if((float)Battery.voltage/1000 > MINIMUM_UPDATE_VOLTAGE) 
   {
     println_out("Checking for update!");
     t_httpUpdate_return ret = httpUpdate.update(WifiClient,MQTT_SERVER, 80, "/esp/update/update.php", VERSION);
@@ -127,9 +100,9 @@ void setup() {
 void loop() {
   //valve_test();
   on_off_command = 0;
-  mqtt_reconnect();
+  mqtt_client.reconnect();
   if (mqtt_client.connected()) {
-    mqtt_send_measurements();
+    send_measurements_to_server();
     print_out("Waiting for commands:\n");
     mqtt_client.loop();
     mqtt_done=0;
@@ -143,38 +116,11 @@ void loop() {
   }
   //if (remote_update && (valve_state() == 0 || winter_state == 1))  {web_update(remote_update); println_out("\nSetting up Webupdate");}
   if (winter_state == 1)  winter_mode(); 
-  if (on_off_command && ((float)voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(mqtt_client.state()))  valve_turn_on();
-  if (!on_off_command || ((float)voltage / 1000) < VALVE_CLOSE_VOLTAGE || (mqtt_client.state()))        valve_turn_off();
+  if (on_off_command && ((float)Battery.voltage / 1000) > MINIMUM_VALVE_OPEN_VOLTAGE && !(mqtt_client.state()))  valve_turn_on();
+  if (!on_off_command || ((float)Battery.voltage / 1000) < VALVE_CLOSE_VOLTAGE || (mqtt_client.state()))        valve_turn_off();
   delay(100);
-  if ((valve_state() == 1) || (valve_state() == 14)) {       //ha a szelep nyitva van
-    print_out("Valve state: "); println_out(String(valve_state()));
-    flow_meter_calculate_velocity();
-    mqtt_reconnect();
-    if (mqtt_client.connected()) {
-      print_out("szelep nyitva");
-      mqtt_client.loop();
-      mqttsend_i(on_off_command, device_id, "/ON_OFF_STATE"); //ez elég fura, utánnajárni
-      mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
-      mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
-      mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
-      mqttsend_i(0, device_id, "/END");
-      mqtt_client.loop();
-      delay(100);
-      mqtt_client.disconnect();
-    }
-  }
-  else{                                                   //ha a szelep nincs nyitva
-    if (mqtt_client.connected()) {
-      print_out("\nszelept nincs nyitva\n");
-      mqtt_reconnect();
-      mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
-      mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
-      mqttsend_i(0, device_id, "/END");
-      delay(100);
-      mqtt_client.disconnect();
-    }
-    go_sleep(SLEEP_TIME, 0);    
-  }
+  if ((valve_state() == 1) || (valve_state() == 14))  valve_is_open(); //ha a szelep nyitva van
+  else                                                valve_is_closed();
 
     print_out("Time in awake state: "); print_out(String((float)millis()/1000)); println_out(" s");
     println_out("Delay");
@@ -182,37 +128,67 @@ void loop() {
     on_off_command = 0;
     detachInterrupt(FLOWMETER_PIN);
     digitalWrite(GPIO15, LOW);
-    get_TempPressure();         //Nyitott szelepnél minden újracsatlakozásnál mérek hőmérsékletet és légnyomást
+    Thermometer.read();         //Nyitott szelepnél minden újracsatlakozásnál mérek hőmérsékletet és légnyomást
     digitalWrite(GPIO15, HIGH);
-    attachInterrupt(FLOWMETER_PIN, flow_meter_interrupt, FALLING);
+    attachInterrupt(FLOWMETER_PIN, flowmeter_callback, FALLING);
 }
 
-void mqtt_send_measurements(){
+void valve_is_open(){       //ha a szelep nyitva van
+    print_out("Valve state: "); println_out(String(valve_state()));
+    mqtt_client.reconnect();
+    if (mqtt_client.connected()) {
+      print_out("szelep nyitva");
+      mqtt_client.loop();
+      mqtt_client.send_i(on_off_command, device_id, "/ON_OFF_STATE"); //ez elég fura, utánnajárni
+      mqtt_client.send_d(Flowmeter.get_volume(), device_id, "/FLOWMETER_VOLUME", 2);
+      mqtt_client.send_d(Flowmeter.get_velocity(), device_id, "/FLOWMETER_VELOCITY", 2);
+      mqtt_client.send_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+      mqtt_client.send_i(0, device_id, "/END");
+      mqtt_client.loop();
+      delay(100);
+      mqtt_client.disconnect();
+    }
+  }
+
+void valve_is_closed(){                                                   //ha a szelep nincs nyitva
+    if (mqtt_client.connected()) {
+      print_out("\nszelept nincs nyitva\n");
+      mqtt_client.reconnect();
+      mqtt_client.send_i(valve_state(), device_id, "/ON_OFF_STATE");
+      mqtt_client.send_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+      mqtt_client.send_i(0, device_id, "/END");
+      delay(100);
+      mqtt_client.disconnect();
+    }
+    go_sleep(SLEEP_TIME, 0);
+  }
+
+void send_measurements_to_server(){
   mqtt_client.loop();
   println_out("sending temperature");
-  mqttsend_d(T, device_id, "/TEMPERATURE", 1);
+  mqtt_client.send_d(Thermometer.temperature, device_id, "/TEMPERATURE", 1);
   println_out("sending moisture");
-  mqttsend_d(moisture, device_id, "/MOISTURE", 2);
+  mqtt_client.send_d(Soil.moisture, device_id, "/MOISTURE", 2);
   println_out("sending RSSI");
-  mqttsend_i(WiFi.RSSI(), device_id, "/RSSI");
+  mqtt_client.send_i(WiFi.RSSI(), device_id, "/RSSI");
   println_out("sending voltage,etc..");
-  mqttsend_d((float)voltage / 1000, device_id, "/VOLTAGE", 3);
-  mqttsend_d(P, device_id, "/PRESSURE", 3);
-  mqttsend_s(ver.c_str(), device_id, "/VERSION");
-  mqttsend_s(reset_reason(0).c_str(), device_id, "/RST_REASON");
-  mqttsend_d((float)flowmeter_int / FLOWMETER_CALIB_VOLUME, device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
-  mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
-  mqttsend_i(0, device_id, "/READY_FOR_DATA");
+  mqtt_client.send_d((float)Battery.voltage / 1000, device_id, "/VOLTAGE", 3);
+  mqtt_client.send_d(0, device_id, "/PRESSURE", 3);
+  mqtt_client.send_s(ver.c_str(), device_id, "/VERSION");
+  mqtt_client.send_s(reset_reason(0).c_str(), device_id, "/RST_REASON");
+  mqtt_client.send_d(Flowmeter.get_volume(), device_id, "/FLOWMETER_VOLUME_X", 2);    //ez azert kell hogy pontos legyen a ki be kapcsolás
+  mqtt_client.send_d((float)millis()/1000, device_id, "/AWAKE_TIME_X", 2);
+  mqtt_client.send_i(0, device_id, "/READY_FOR_DATA");
 }
 
 void winter_mode(){
   valve_turn_on();
   if (mqtt_client.connected()) {
-    mqtt_reconnect();
+    mqtt_client.reconnect();
     print_out("Winter mode\n"); print_out("Valve state: "); println_out(String(valve_state()));
-    mqttsend_i(valve_state(), device_id, "/ON_OFF_STATE");
-    mqttsend_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
-    mqttsend_i(0, device_id, "/END");
+    mqtt_client.send_i(valve_state(), device_id, "/ON_OFF_STATE");
+    mqtt_client.send_d((float)millis()/1000, device_id, "/AWAKE_TIME", 2);
+    mqtt_client.send_i(0, device_id, "/END");
     delay(100);
     mqtt_client.disconnect();
     }
@@ -249,9 +225,8 @@ void valve_turn_off() {
     closing_flag=1;
   }
   if (closing_flag==1)  {
-    flow_meter_calculate_velocity();
-    mqttsend_d(flowmeter_volume, device_id, "/FLOWMETER_VOLUME", 2);
-    mqttsend_d(flowmeter_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
+    mqtt_client.send_d(Flowmeter.get_volume(), device_id, "/FLOWMETER_VOLUME", 2);
+    mqtt_client.send_d(Flowmeter.get_velocity, device_id, "/FLOWMETER_VELOCITY", 2);
   }
   if (!valve_state) locsolo_state = LOW;
   digitalWrite(GPIO15, LOW);  //VOLTAGE_BOOST
@@ -271,8 +246,8 @@ int valve_state() {
   if(!digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))                         {ret=0;}
   if(digitalRead(VALVE_SWITCH_TWO) && digitalRead(VALVE_SWITCH_ONE))                          {ret=12;}
   if(!digitalRead(VALVE_SWITCH_TWO) && !digitalRead(VALVE_SWITCH_ONE))                        {ret=13;}
-  if (((float)voltage / 1000) <= VALVE_CLOSE_VOLTAGE) ret = 5;
-  if (((float)voltage / 1000) <= MINIMUM_VALVE_OPEN_VOLTAGE) ret += 4;
+  if (((float)Battery.voltage / 1000) <= VALVE_CLOSE_VOLTAGE) ret = 5;
+  if (((float)Battery.voltage / 1000) <= MINIMUM_VALVE_OPEN_VOLTAGE) ret += 4;
   if(valve_timeout) {ret+=10;}
   print_out("Voltage: "); print_out(String(voltage));
   print_out(", valve_timeout flag: "); print_out(String(valve_timeout));
@@ -336,121 +311,6 @@ void go_sleep(float microseconds, int winter_state){
   delay(100);
 }
 
-void flow_meter_interrupt(){
-  flowmeter_int++;
-}
-
-void flow_meter_calculate_velocity(){
-  static int last_int_time = 0, last_int = 0;;
-
-  flowmeter_volume = (float)flowmeter_int / FLOWMETER_CALIB_VOLUME;
-  flowmeter_velocity = ((float)(flowmeter_int - last_int) / (((int)millis() - last_int_time)/1000))/FLOWMETER_CALIB_VELOCITY;
-  //if (flowmeter_volume == 0) flowmeter_velocity=0;
-  last_int_time = millis();
-  last_int = flowmeter_int;
-
-  print_out("Flowmeter volume: "); print_out(String(flowmeter_volume)); println_out(" L");
-  print_out("Flowmeter velocity: "); print_out(String(flowmeter_velocity)); println_out(" L/min");
-}
-
-float read_voltage(){
-#if !SZELEP  
-  digitalWrite(GPIO15, 0);        //FSA3157 digital switch
-  digitalWrite(RXD_VCC_PIN, 1);
-  delay(100); //2018.aug.25
-  voltage = 0;
-  for (int j = 0; j < 20; j++) voltage+=analogRead(A0); // for new design
-  //voltage = (voltage / 20)*4.7272*1.039;                         //4.7272 is the resistor divider value, 1.039 is empirical for ESP8266
-  voltage = (voltage / 20)*4.7272*0.957;                                 //82039a-1640ef, 2018.aug.15
-  print_out("Voltage:");  println_out(String(voltage));
-  digitalWrite(RXD_VCC_PIN, 0);
-  return voltage;
-#else
-  voltage = 0;
-  for (int j = 0; j < 10; j++) {voltage+=((float)rom_phy_get_vdd33()); /*Serial.println(ESP.getVcc());*/}//ESP.getVcc()
-  voltage = (voltage / 10) - VOLTAGE_CALIB; //-0.2V
-  print_out("Voltage:");  println_out(String(voltage));
-  return voltage;
-#endif
-  }
-
-void read_moisture(){  
-#if !SZELEP
-  digitalWrite(GPIO15, 1);          //FSA3157 digital switch
-  delay(100);
-  moisture = 0;
-  for (int j = 0; j < 20; j++) moisture += analogRead(A0);
-  moisture = (((float)moisture / 20) / 1024.0) * 100;
-  print_out("Moisture:");  println_out(String(moisture));
-  digitalWrite(GPIO15, 0);
-  delay(10);
-#endif  
-}
-
-void get_TempPressure(){
-  
-  if (!bmp.begin(SDA,SCL))  {
-    println_out("BMP init failed!");
-    bmp.setOversampling(16);
-  }
-  else {println_out("BMP init success!"); bmp.setOversampling(16);}
-  double t = 0, p = 0;
-  for (int i = 0; i < 3; i++) {
-    delay(bmp.startMeasurment());
-    bmp.getTemperatureAndPressure(T, P);
-    t += T;
-    p += P;
-  }
-  T = t / 3;
-  P = p / 3;
-  print_out("T=");     print_out(String(T));
-  print_out("   P=");  println_out(String(P));
-}
-
-void http_update_answer(t_httpUpdate_return ret){
-  switch(ret) {
-    case HTTP_UPDATE_FAILED:
-      println_out("[update] Update failed.");
-      break;
-    case HTTP_UPDATE_NO_UPDATES:
-      println_out("[update] No Update.");
-      break;
-    case HTTP_UPDATE_OK:
-      println_out("[update] Updated!"); // may not called we reboot the ESP
-      break;    
-  }
-}
-
-File create_file(){
-#if FILE_SYSTEM  
-  SPIFFS.begin();
-  char buff[13];
-  sprintf (buff, "%s%s", "/", device_id);
-  File f = SPIFFS.open(buff, "a+");
-  if (!f) {
-    Serial.println("log file open failed");
-    SPIFFS.remove(buff);
-    format_now();
-  }
-  if(f.size() > MAX_LOG_FILE_SIZE){      //Ha tul nagy
-    f.close();
-    SPIFFS.remove(buff);
-    File f = SPIFFS.open(buff, "a+");
-  }
-  f.print("\nfile size:");
-  f.print(f.size());
-  Serial.print("\nfile size:");
-  Serial.print(f.size());
-  return f;
-#endif
-}
-
-void close_file(){
-#if FILE_SYSTEM
-  f.close();
-#endif
-}
-
 void print_out(String str){
 #if SERIAL_PORT  
   Serial.print(str);
@@ -478,33 +338,6 @@ void config_time(){
 #endif
 }
 
-void format(){
-#if FILE_SYSTEM
-  SPIFFS.begin();
-  if (!SPIFFS.exists("/formok")) {
-    Serial.println("Please wait 30 secs for SPIFFS to be formatted");
-    if(SPIFFS.format()) Serial.println("Spiffs formatted");
-    File file = SPIFFS.open("/formok", "w");
-    if (!file) {
-        Serial.println("file open failed");
-    } else {
-        file.println("Format Complete");
-        file.close();
-        Serial.println("format file written and closed");
-    }
-  } else {
-    println_out("SPIFFS is formatted. Moving along...");
-  }
-#endif
-}
-
-void format_now(){
-#if FILE_SYSTEM
-  if(SPIFFS.format()) Serial.println("SPIFFS formatted");
-  else Serial.println("SPIFFS format failed");
-#endif
-}
-
 void alternative_startup(){
   Serial.println("Alternative startup");
   SPIFFS.end();
@@ -517,13 +350,13 @@ void alternative_startup(){
 void valve_open_on_switch(){
 #if SZELEP
   print_out("valve_open_on_switch: "); Serial.print(rtcData.open_on_switch);
-  if ((rtcData.open_on_switch == 1 && rtcData.valid == 1) && ((float)read_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){
+  if ((rtcData.open_on_switch == 1 && rtcData.valid == 1) && ((float)get_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){
     print_out("valve openning on switch!!!");  pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
     pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
     delay(100);
     digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 0);
     digitalWrite(VALVE_H_BRIDGE_LEFT_PIN, 1);
-    while(((float)read_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){ //Letesztelni hogy ez mukodik e!! Alacsony feszultsegnel be kell csukodnia!
+    while(((float)get_voltage() / 1000.0) > MINIMUM_VALVE_OPEN_VOLTAGE){ //Letesztelni hogy ez mukodik e!! Alacsony feszultsegnel be kell csukodnia!
       delay(60000);
     }
     digitalWrite(VALVE_H_BRIDGE_RIGHT_PIN, 1);
@@ -536,6 +369,42 @@ void valve_open_on_switch(){
   rtcData.open_on_switch = 1;
   RTC_save();
 #endif 
+}
+
+void RTC_validateCRC(){
+  // Calculate the CRC of what we just read from RTC memory, but skip the first 4 bytes as that's the checksum itself.
+  uint32_t crc = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
+  rtcData.valid = false;
+  if( crc == rtcData.crc32 ) {
+	println_out("RTC CRC TRUE");
+	rtcData.valid = true;
+  }
+  else println_out("RTC CRC FALSE");
+}
+
+void RTC_saveCRC(){
+  print_out("Saving RTC memory\n");
+  rtcData.crc32 = calculateCRC32( ((uint8_t*)&rtcData) + 4, sizeof( rtcData ) - 4 );
+}
+
+uint32_t calculateCRC32( const uint8_t *data, size_t length ) {
+  uint32_t crc = 0xffffffff;
+  while( length-- ) {
+	uint8_t c = *data++;
+	for( uint32_t i = 0x80; i > 0; i >>= 1 ) {
+	  bool bit = crc & 0x80000000;
+	  if( c & i ) {
+		bit = !bit;
+	  }
+
+	  crc <<= 1;
+	  if( bit ) {
+		crc ^= 0x04c11db7;
+	  }
+	}
+  }
+
+  return crc;
 }
 
 String reset_reason(int icore) //returns reset reason for specified core
