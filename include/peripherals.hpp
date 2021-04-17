@@ -1,13 +1,12 @@
-#pragma once
-
-//We are passing C++ member function into C callback
+#ifndef PERIPHERALS_HPP
+#define PERIPHERALS_HPP
 
 class flowmeter{
 private:
     int flowmeter_int=0;
 public:
     flowmeter();
-    void flowmeter_interrupt();
+    void flowmeter_callback();
     float get_volume();
     float get_velocity();
 };
@@ -41,3 +40,5 @@ public:
     float pressure=0;
     void read();
 };
+
+#endif

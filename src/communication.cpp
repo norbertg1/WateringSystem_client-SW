@@ -18,15 +18,15 @@ void mqtt::callback_function(char* topic, byte* payload, unsigned int length) { 
   println_out(topic);
   sprintf (buff, "%s%s", device_id, "/ON_OFF_COMMAND");
   if (!strcmp(topic, buff)) {
-	on_off_command = payload[0] - 48;
+	Valve.on_off_command = payload[0] - 48;
 	rtcData.winter_state = 0;
-	if (on_off_command == 2){
+	if (Valve.on_off_command == 2){
 	  print_out("Winter State");
-	  winter_state = 1;
+	  Valve.winter_state = 1;
 	  rtcData.winter_state = 1;
 	} //Winter state, sajnos nem működik újraindulásnál hardveresen mindig becsukodik
-	print_out("Valve command: ");  println_out(String(on_off_command));
-	mqtt_done++;
+	print_out("Valve command: ");  println_out(String(Valve.on_off_command));
+	received_messages++;
   }
   sprintf (buff, "%s%s", device_id, "/DELAY_TIME");
   if (!strcmp(topic, buff)) {
@@ -34,7 +34,7 @@ void mqtt::callback_function(char* topic, byte* payload, unsigned int length) { 
 	buff[length] = '\n';
 	delay_time_seconds = atoi(buff);
 	print_out("Delay time_seconds: "); println_out(String(delay_time_seconds));
-	mqtt_done++;
+	received_messages++;
   }
   sprintf (buff, "%s%s", device_id, "/SLEEP_TIME");
   if (!strcmp(topic, buff)) {
@@ -42,19 +42,19 @@ void mqtt::callback_function(char* topic, byte* payload, unsigned int length) { 
 	buff[length] = '\n';
 	sleep_time_seconds = atoi(buff);
 	print_out("Sleep time_seconds: "); println_out(String(sleep_time_seconds));
-	mqtt_done++;
+	received_messages++;
   }
   sprintf (buff, "%s%s", device_id, "/REMOTE_UPDATE");
   if (!strcmp(topic, buff)) {
 	remote_update = payload[0] - 48;
 	print_out("Remote update: "); println_out(String(remote_update));
-	mqtt_done++;
+	received_messages++;
   }
   sprintf (buff, "%s%s", device_id, "/REMOTE_LOG");
   if (!strcmp(topic, buff)) {
 	remote_log = payload[0] - 48;
 	print_out("Remote log: "); println_out(String(remote_log));
-	mqtt_done++;
+	received_messages++;
   }
 }
 
@@ -66,7 +66,7 @@ void mqtt::reconnect() {
 	Serial.print("(int)mqtt_client._client: ");
 	Serial.println((int)mqtt_client._client);
 	mqtt_client.connect(ID.c_str(), mqtt_user , mqtt_pass);
-	if (valve_state()) attempts_max=20;
+	if (Valve.state()) attempts_max=20;
 	Serial.println(mqtt_client.state());
 	while(mqtt_client.state() != 0 && i < attempts_max){
 		if (i>10) {           //nem tudom miert, talan bugos de ez kell ha nem akar csatlakozni
@@ -96,6 +96,18 @@ void mqtt::reconnect() {
 	}
 	print_out("\nMQTT attempts = "); print_out(String(i));
 	print_out(" The nMQTT state is: "); println_out(String(mqtt_client.state()));
+}
+
+void mqtt::waiting_for_messages(int number){
+	print_out("Waiting for messages:\n");
+    mqtt_client.received_messages=0;
+    for (int i = 0; i < 100; i++) {
+      mqtt_client.loop();                  //Itt várok az adatra, talán szebben is lehetne
+      if (mqtt_client.received_messages == number) break;
+      //print_out(".");
+		delay(100);
+    }
+    print_out("\nNumber of received messages: "); println_out(String(mqtt_client.received_messages));
 }
 
 void mqtt::send_d(double payload, char* device_id, char* topic, char precision){
@@ -225,16 +237,4 @@ void start_wifimanager() {
   }
 }
 
-void http_update_answer(t_httpUpdate_return ret){
-  switch(ret) {
-    case HTTP_UPDATE_FAILED:
-      println_out("[update] Update failed.");
-      break;
-    case HTTP_UPDATE_NO_UPDATES:
-      println_out("[update] No Update.");
-      break;
-    case HTTP_UPDATE_OK:
-      println_out("[update] Updated!"); // may not called we reboot the ESP
-      break;    
-  }
-}
+

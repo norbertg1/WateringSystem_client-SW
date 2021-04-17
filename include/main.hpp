@@ -9,24 +9,12 @@
 */
 #define ESP32
 #include <Arduino.h>
-#include "HTTPUpdate.h"
 #include "esp_certificates.h"
-
-#include <Ticker.h>
-#include <DNSServer.h>
-#include "BMP280.h"
-#include <WiFiUdp.h>
-#include <EEPROM.h>
-#include "FS.h"
-#include <time.h>
-
-#include <WiFiClientSecure.h>
-
-#include <rom/rtc.h>
-extern "C" int rom_phy_get_vdd33();
 #include "communication.hpp"
 #include "peripherals.hpp"
 #include "filesystem.hpp"
+#include "valve_control.hpp"
+#include "update.hpp"
 
 //----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
@@ -65,7 +53,7 @@ extern "C" int rom_phy_get_vdd33();
 #define MINIMUM_VALVE_OPEN_VOLTAGE        3.1   //If valve is closed
 #define VALVE_CLOSE_VOLTAGE               3.05   //If valve is open
 #define MAX_LOG_FILE_SIZE                 409600
-#define SZELEP                            0
+#define SZELEP                            1
 #define FILE_SYSTEM                       0
 #define SERIAL_PORT                       1
 #define CONFIG_TIME                       1
@@ -82,14 +70,6 @@ extern "C" int rom_phy_get_vdd33();
 #define SDA                               14
 //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 
-
-void valve_turn_on();
-void valve_turn_off();
-void valve_is_open();
-void valve_is_closed();
-int  valve_state();
-void valve_test();
-void valve_open_on_switch();
 void go_sleep(float microseconds, int winter_state);
 void go_sleep_callback(/*WiFiManager *myWiFiManager*/void *);
 void print_out(String str);
@@ -97,12 +77,12 @@ void println_out(String str);
 void alternative_startup();
 void setup_pins();
 void config_time();
-void winter_mode();
-int get_reset_reason(int icore);
 String reset_reason(int icore);
 void send_measurements_to_server();
 void RTC_saveCRC();
 void RTC_validateCRC();
+void flowmeter_callback();
+void mqtt_callback(char* topic, byte* payload, unsigned int length);
 
 extern WiFiClientSecure WifiSecureClient;
 extern mqtt mqtt_client;
@@ -110,12 +90,13 @@ extern mqtt mqtt_client;
 extern char device_id[16];
 extern const char* mosquitto_user;
 extern const char* mosquitto_pass;
-extern int on_off_command;
-extern int mqtt_done;
 extern int sleep_time_seconds;
 extern int delay_time_seconds; 
 extern int remote_update, remote_log;
 extern String ID;
 extern int winter_state;
+extern flowmeter Flowmeter;
+extern voltage Battery;
+extern valve_control Valve;
 
 #endif

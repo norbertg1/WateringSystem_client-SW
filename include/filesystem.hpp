@@ -1,6 +1,7 @@
-#pragma once
-#include "SPIFFS.h"
+#ifndef FILESYSTEM_HPP
+#define FILESYSTEM_HPP
 
+#include "SPIFFS.h"
 
 
 void format();
@@ -10,3 +11,5 @@ void close_file();
 //byte doFTP();
 //byte eRcv();
 void efail();
+
+#endif

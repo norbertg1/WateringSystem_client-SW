@@ -5,7 +5,7 @@ flowmeter::flowmeter(){
     flowmeter_int=0;
 }
 
-void flowmeter::flowmeter_interrupt(){
+void flowmeter::flowmeter_callback(){
     flowmeter_int++;
 }
 
@@ -43,10 +43,9 @@ void voltage::read_voltage(){
   digitalWrite(RXD_VCC_PIN, 0);
 #else
   voltage = 0;
-  for (int j = 0; j < 10; j++) {voltage+=((float)rom_phy_get_vdd33()); /*Serial.println(ESP.getVcc());*/}//ESP.getVcc()
+  for (int j = 0; j < 10; j++) {/*voltage+=((float)rom_phy_get_vdd33());*/ /*Serial.println(ESP.getVcc());*/}//ESP.getVcc()
   voltage = (voltage / 10) - VOLTAGE_CALIB; //-0.2V
   print_out("Voltage:");  println_out(String(voltage));
-  return voltage;
 #endif
   }
 
@@ -64,7 +63,7 @@ void moisture::read_moisture(){
 }
 
 void thermometer::read(){
-
+  temperature = 25;
 }
 
 void humiditySensor::read(){

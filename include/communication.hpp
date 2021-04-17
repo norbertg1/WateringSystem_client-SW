@@ -1,6 +1,7 @@
-#pragma once
+#ifndef COMMUNICATION_HPP
+#define COMMUNICATION_HPP
 
-#include <Arduino.h>
+
 #include <ESPAsyncWebServer.h>
 #include <ESPAsyncWiFiManager.h>         //https://github.com/tzapu/WiFiManager
 #include <PubSubClient.h>
@@ -12,15 +13,12 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length);
 void mqtt_reconnect();
 void setup_wifi();
 void start_wifimanager();
-void web_update_setup();
-void web_update(long long minutes);
 void send_log();
 uint32_t calculateCRC32( const uint8_t *data, size_t length );
 //String getSsidPass( String s );
 
 void Wait_for_WiFi();
 
-void http_update_answer(t_httpUpdate_return ret);
 
 // The ESP8266 RTC memory is arranged into blocks of 4 bytes. The access methods read and write 4 bytes at a time,
 // so the RTC data structure should be padded to a 4-byte multiple.
@@ -42,11 +40,15 @@ extern struct RTCData rtcData;
 
 class mqtt : public PubSubClient{
    public:
+    int received_messages=0;
     PubSubClient pubsubclient;
     mqtt(WiFiClientSecure& cclient);
     void callback_function(char* topic, byte* payload, unsigned int length);
     void reconnect();
+    void waiting_for_messages(int number);
     void send_d(double payload, char* device_id, char* topic, char precision);
     void send_i(int payload, char* device_id, char* topic);
     void send_s(const char *payload, char* device_id, char* topic);
 };
+
+#endif
