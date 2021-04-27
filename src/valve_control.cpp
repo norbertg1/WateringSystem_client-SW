@@ -3,7 +3,7 @@
 
 void valve_control::turn_on() {
 #if SZELEP
-  digitalWrite(GPIO15, HIGH); //VOLTAGE BOOST
+  digitalWrite(EN_5V, HIGH); //VOLTAGE BOOST
   println_out("Valve_turn_on()");
   pinMode(FLOWMETER_PIN, INPUT);
   attachInterrupt(FLOWMETER_PIN, flowmeter_callback, FALLING);
@@ -35,7 +35,7 @@ void valve_control::turn_off() {
     mqtt_client.send_d(Flowmeter.get_velocity(), device_id, "/FLOWMETER_VELOCITY", 2);
   }
   if (!state()) locsolo_state = LOW;
-  digitalWrite(GPIO15, LOW);  //VOLTAGE_BOOST
+  digitalWrite(EN_5V, LOW);  //VOLTAGE_BOOST
   detachInterrupt(FLOWMETER_PIN); 
   if((millis() - t) > MAX_VALVE_SWITCHING_TIME)  {println_out("Error turn off timeout reached");  valve_timeout=1;}
 #endif

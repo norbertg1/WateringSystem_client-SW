@@ -96,9 +96,9 @@ void loop() {
   delay(DELAY_TIME);
   Valve.on_off_command = 0;
   detachInterrupt(FLOWMETER_PIN);
-  digitalWrite(GPIO15, LOW);
+  digitalWrite(EN_5V, LOW);
   Thermometer.read();         //Nyitott szelepnél minden újracsatlakozásnál mérek hőmérsékletet és légnyomást
-  digitalWrite(GPIO15, HIGH);
+  digitalWrite(EN_5V, HIGH);
   attachInterrupt(FLOWMETER_PIN, flowmeter_callback, FALLING);
 }
 
@@ -129,10 +129,9 @@ void send_measurements_to_server(){
 }
 
 void setup_pins(){
-  pinMode(GPIO15, OUTPUT);
+  pinMode(EN_5V, OUTPUT);
   pinMode(VALVE_H_BRIDGE_RIGHT_PIN, OUTPUT);
   pinMode(VALVE_H_BRIDGE_LEFT_PIN, OUTPUT);
-  pinMode(RXD_VCC_PIN, OUTPUT);
   pinMode(VALVE_SWITCH_ONE, INPUT);
   pinMode(VALVE_SWITCH_TWO, INPUT);
 }

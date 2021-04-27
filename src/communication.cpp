@@ -63,8 +63,6 @@ void mqtt::reconnect() {
 	int i=0;
 	int attempts_max = 3;
 	print_out("Connceting to MQTT server as: "); println_out(ID);
-	Serial.print("(int)mqtt_client._client: ");
-	Serial.println((int)mqtt_client._client);
 	mqtt_client.connect(ID.c_str(), mqtt_user , mqtt_pass);
 	if (Valve.state()) attempts_max=20;
 	Serial.println(mqtt_client.state());

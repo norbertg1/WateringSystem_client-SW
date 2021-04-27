@@ -16,7 +16,7 @@
 #include "valve_control.hpp"
 #include "update.hpp"
 
-//----------------------------------------------------------------settings---------------------------------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------SETTINGS---------------------------------------------------------------------------------------------------------------------------------------------//
 #define WIFI_CONNECTION_TIMEOUT           30                              //Time for connecting to wifi in seconds
 #define WIFI_CONFIGURATION_PAGE_TIMEOUT   300                             //when cannot connect to saved wireless network, in seconds, this is the time until we can set new SSID in seconds
 #define MAX_VALVE_SWITCHING_TIME_SECONDS  20                              //The time when valve is switched off in case of broken microswitch or mechanical failure in seconds
@@ -25,26 +25,22 @@
 #define MINIMUM_DEEP_SLEEP_TIME_SECONDS   60                              //in seconds
 //---------------------------------------------------------------End of settings---------------------------------------------------------------------------------------------------------------------------------------//
 
-//------------------------------------------------------------------------Do not edit------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------CONSTANTS AND PIN SETTINGS------------------------------------------------------------------------------------------------
 #define MINIMUM_DEEP_SLEEP_TIME           (long long) MINIMUM_DEEP_SLEEP_TIME_SECONDS * 1000000
 #define SLEEP_TIME_NO_WIFI                (long long) SLEEP_TIME_NO_WIFI_SECONDS * 1000000    
 #define SLEEP_TIME                        (long long) sleep_time_seconds * 1000000            //when watering is off, in microseconds
 #define DELAY_TIME                        delay_time_seconds * 1000               //when watering is on, in miliseconds
 #define WEB_UPDATE_TIMEOUT                WEB_UPDATE_TIMEOUT_SECONDS  * 1000      //time out for web update server
 #define MAX_VALVE_SWITCHING_TIME          MAX_VALVE_SWITCHING_TIME_SECONDS*1000
-#define DHT_TYPE                          DHT22
-/*#define DHT_PIN                           0     //<---- innet kikommentezni oldhoz
-#define VALVE_H_BRIDGE_RIGHT_PIN          12
-#define VALVE_H_BRIDGE_LEFT_PIN           4
-#define VALVE_SWITCH_ONE                  14
-#define VALVE_SWITCH_TWO                  13
-#define GPIO15                            15      //ennek kene lennie a voltage boost EN pinnek és az FSA3157 switch pinnek is
-#define SCL                               5
-#define SDA                               2
-#define FLOWMETER_PIN                     5  */   //<---- eddig
-#define RXD_VCC_PIN                       3
-#define TXD_PIN                           1
-#define VOLTAGE_CALIB                     230
+#define VALVE_H_BRIDGE_RIGHT_PIN          26
+#define VALVE_H_BRIDGE_LEFT_PIN           33
+#define VALVE_SWITCH_ONE                  32
+#define VALVE_SWITCH_TWO                  25
+#define SCL                               22
+#define SDA                               21
+#define FLOWMETER_PIN                     14     //<---- eddig
+#define EN_5V                             12    //5V enable or disable for flowmeter
+//#define VOLTAGE_CALIB                     230
 #define MQTT_SERVER                       "locsol.dynamic-dns.net"
 #define FTP_SERVER                        "192.168.1.101"
 #define FLOWMETER_CALIB_VOLUME            450.0 //Pulses per Liter: 450
@@ -58,17 +54,6 @@
 #define SERIAL_PORT                       1
 #define CONFIG_TIME                       1
 //--------------------------------------------------------------------End----------------------------------------------------------------------------------------------------------------------------------------------------//
-
-//--------------------------------------------------------------------old---------------------------------------------------------------------------------------------------------------------------------------------------//
-#define VALVE_H_BRIDGE_RIGHT_PIN          12
-#define VALVE_H_BRIDGE_LEFT_PIN           15
-#define VALVE_SWITCH_ONE                  5
-#define VALVE_SWITCH_TWO                  13
-#define GPIO15                            0
-#define FLOWMETER_PIN                     4
-#define SCL                               3
-#define SDA                               14
-//----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 
 void go_sleep(float microseconds, int winter_state);
 void go_sleep_callback(/*WiFiManager *myWiFiManager*/void *);
